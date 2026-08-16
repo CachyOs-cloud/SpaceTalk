@@ -1,0 +1,6 @@
+{
+  "name": "SpaceTalk",
+  "description": "Black and white sovereign social network with global search, followers, friend requests, unfiltered inbox, shorts, and crypto tipping.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
