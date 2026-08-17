@@ -9,6 +9,7 @@ import {
   Edit3, 
   QrCode, 
   Zap, 
+  Wallet,
   Radio, 
   MapPin, 
   Calendar, 
@@ -22,9 +23,11 @@ import {
   Image as ImageIcon,
   Mail,
   Lock,
-  Users
+  Users,
+  LogOut
 } from 'lucide-react';
 import { playSound } from '../utils/sound';
+import { UserBadge } from './UserBadge';
 
 interface ProfileViewProps {
   user: UserProfile;
@@ -37,8 +40,22 @@ interface ProfileViewProps {
   onStartChat?: (username: string) => void;
   onUpdateUser: (updated: UserProfile) => void;
   onShowToast: (msg: string) => void;
-  onOpenTip: (targetUser: { username: string; displayName?: string; avatar?: string }) => void;
+  onOpenTip: (targetUser: { 
+    username: string; 
+    displayName?: string; 
+    avatar?: string;
+    wallets?: {
+      btc?: string;
+      eth?: string;
+      xmr?: string;
+      sol?: string;
+    };
+    isVerified?: boolean;
+    isOwner?: boolean;
+    email?: string;
+  }) => void;
   onRequireAuth: (action: string) => void;
+  onLogout?: () => void;
 }
 
 export function ProfileView({
@@ -54,6 +71,7 @@ export function ProfileView({
   onShowToast,
   onOpenTip,
   onRequireAuth,
+  onLogout,
 }: ProfileViewProps) {
   const [activeTab, setActiveTab] = useState<'transmissions' | 'crypto' | 'socials' | 'saved'>('transmissions');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
@@ -170,6 +188,19 @@ export function ProfileView({
           
           {/* Top Actions on Banner */}
           <div className="absolute top-4 right-4 flex items-center gap-2">
+            {onLogout && !user.isGuest && (
+              <button
+                onClick={() => {
+                  playSound('pop');
+                  onLogout();
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-red-950/80 hover:bg-red-900 backdrop-blur-md border border-red-500/30 text-xs text-red-200 transition-all font-semibold cursor-pointer shadow-md"
+                title="Disconnect node identity"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Log Out</span>
+              </button>
+            )}
             <button
               onClick={() => {
                 playSound('click');
@@ -178,7 +209,7 @@ export function ProfileView({
                   address: user.wallets?.eth || '0x71C8F32B5e69e71A598B6D197120c920D32894B2' 
                 });
               }}
-              className="p-2.5 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-white hover:bg-black transition-all"
+              className="p-2.5 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-white hover:bg-black transition-all cursor-pointer"
               title="Share Node QR"
             >
               <QrCode className="w-4 h-4" />
@@ -192,7 +223,7 @@ export function ProfileView({
                 playSound('click');
                 setShowEditModal(true);
               }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-xs text-white hover:bg-black transition-all font-semibold"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-xs text-white hover:bg-black transition-all font-semibold cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5 text-white" />
               <span>Edit Profile</span>
@@ -223,21 +254,21 @@ export function ProfileView({
             <div className="flex items-center gap-2.5 flex-wrap">
               <button
                 onClick={() => {
-                  if (user.isGuest) {
-                    onRequireAuth('tip users');
-                    return;
-                  }
                   playSound('pop');
                   onOpenTip({
                     username: user.username,
                     displayName: user.displayName,
                     avatar: user.avatar,
+                    wallets: user.wallets,
+                    isVerified: user.isVerified,
+                    isOwner: user.isOwner,
+                    email: user.email,
                   });
                 }}
                 className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold text-xs uppercase tracking-wider shadow-md hover:opacity-90 transition-all active:scale-95 cursor-pointer"
               >
-                <Zap className="w-4 h-4 text-white dark:text-black" />
-                <span>Tip Handle</span>
+                <Wallet className="w-4 h-4 text-white dark:text-black" />
+                <span>Wallets & Donate</span>
               </button>
 
               <button
@@ -262,19 +293,15 @@ export function ProfileView({
                   {user.displayName}
                 </h2>
                 
-                {/* Verified Google Badge */}
-                {user.isVerifiedGoogle && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-zinc-950 text-white dark:bg-white dark:text-black text-[10px] font-black uppercase tracking-wider">
-                    <ShieldCheck className="w-3 h-3 text-white dark:text-black" /> Google Verified
-                  </span>
-                )}
-
-                {/* Verified Gmail Badge */}
-                {user.isVerifiedGmail && !user.isVerifiedGoogle && (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-zinc-950 text-white dark:bg-white dark:text-black text-[10px] font-black uppercase tracking-wider">
-                    <Mail className="w-3 h-3 text-white dark:text-black" /> Gmail Verified
-                  </span>
-                )}
+                {/* Dynamic User Badge: Owner Crown & Verified Shield */}
+                <UserBadge
+                  isOwner={user.isOwner}
+                  isVerified={user.isVerified || user.isVerifiedGoogle || user.isVerifiedGmail}
+                  email={user.email}
+                  username={user.username}
+                  size="md"
+                  showText={true}
+                />
               </div>
 
               <div className="flex items-center gap-2 mt-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400">
@@ -439,9 +466,15 @@ export function ProfileView({
             exit={{ opacity: 0, y: -8 }}
             className="space-y-3"
           >
+            <div className="p-3.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs text-zinc-600 dark:text-zinc-400">
+              <p>
+                <strong>Optional Crypto Wallets:</strong> Anyone viewing your profile can copy or scan these addresses to send donations directly from external wallet apps.
+              </p>
+            </div>
+
             {[
               { key: 'btc', label: 'Bitcoin', address: user.wallets?.btc, logo: LOGOS.Bitcoin },
-              { key: 'eth', label: 'Ethereum', address: user.wallets?.eth, logo: LOGOS.Ethereum },
+              { key: 'eth', label: 'Ethereum / EVM', address: user.wallets?.eth, logo: LOGOS.Ethereum },
               { key: 'xmr', label: 'Monero', address: user.wallets?.xmr, logo: LOGOS.Monero },
               { key: 'sol', label: 'Solana', address: user.wallets?.sol, logo: LOGOS.Solana },
             ].map((wallet) => (
@@ -456,18 +489,43 @@ export function ProfileView({
                   <div className="min-w-0">
                     <span className="text-xs font-bold text-zinc-950 dark:text-white block">{wallet.label}</span>
                     <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate block max-w-[200px] sm:max-w-xs">
-                      {wallet.address || 'Address not configured'}
+                      {wallet.address || 'Address not configured (optional)'}
                     </span>
                   </div>
                 </div>
 
-                {wallet.address && (
+                {wallet.address ? (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <button
+                      onClick={() => {
+                        playSound('click');
+                        setQrAddress({ name: `${wallet.label} Address`, address: wallet.address! });
+                      }}
+                      className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white border border-zinc-200 dark:border-zinc-800 transition-all cursor-pointer shadow-xs"
+                      title="Show QR Code"
+                    >
+                      <QrCode className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleCopy(wallet.key, wallet.address!)}
+                      className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white border border-zinc-200 dark:border-zinc-800 transition-all flex items-center gap-1.5 text-xs font-mono cursor-pointer shadow-xs"
+                    >
+                      {copiedKey === wallet.key ? <Check className="w-3.5 h-3.5 text-zinc-950 dark:text-white" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span className="hidden sm:inline">{copiedKey === wallet.key ? 'Copied' : 'Copy'}</span>
+                    </button>
+                  </div>
+                ) : (
                   <button
-                    onClick={() => handleCopy(wallet.key, wallet.address!)}
-                    className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white border border-zinc-200 dark:border-zinc-800 transition-all flex items-center gap-1.5 text-xs font-mono flex-shrink-0 cursor-pointer shadow-xs"
+                    onClick={() => {
+                      if (user.isGuest) {
+                        onRequireAuth('edit profile');
+                        return;
+                      }
+                      setShowEditModal(true);
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white text-[11px] font-mono font-bold cursor-pointer border border-zinc-200 dark:border-zinc-800"
                   >
-                    {copiedKey === wallet.key ? <Check className="w-3.5 h-3.5 text-zinc-950 dark:text-white" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span className="hidden sm:inline">{copiedKey === wallet.key ? 'Copied' : 'Copy'}</span>
+                    + Add
                   </button>
                 )}
               </div>

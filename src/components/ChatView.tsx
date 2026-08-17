@@ -8,6 +8,7 @@ import {
   Phone, 
   PhoneOff, 
   Zap, 
+  Wallet,
   Lock, 
   Check, 
   ShieldCheck, 
@@ -363,13 +364,9 @@ export function ChatView({
               </div>
 
               <div className="flex items-center gap-2">
-                {/* Send Crypto Tip */}
+                {/* View Crypto Wallets / Donate */}
                 <button
                   onClick={() => {
-                    if (user.isGuest) {
-                      onRequireAuth('tip users');
-                      return;
-                    }
                     playSound('pop');
                     onOpenTip({
                       username: activeChannel.name.toLowerCase().replace(/\s+/g, '_'),
@@ -378,10 +375,10 @@ export function ChatView({
                     });
                   }}
                   className="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-950 dark:text-white text-xs font-mono flex items-center gap-1.5 cursor-pointer shadow-xs"
-                  title="Send Crypto Tip"
+                  title="View Crypto Wallets & Donate"
                 >
-                  <Zap className="w-3.5 h-3.5 text-zinc-950 dark:text-white" />
-                  <span className="hidden sm:inline">Tip</span>
+                  <Wallet className="w-3.5 h-3.5 text-zinc-950 dark:text-white" />
+                  <span className="hidden sm:inline">Wallets</span>
                 </button>
 
                 {/* Simulated Audio Call */}

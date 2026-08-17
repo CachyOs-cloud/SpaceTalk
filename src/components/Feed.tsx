@@ -6,6 +6,7 @@ import {
   MessageSquare, 
   Share2, 
   Zap, 
+  Wallet,
   Bookmark, 
   Send, 
   Plus, 
@@ -18,6 +19,7 @@ import {
 } from 'lucide-react';
 import { playSound } from '../utils/sound';
 import { SearchBar } from './SearchBar';
+import { UserBadge } from './UserBadge';
 
 interface FeedProps {
   posts: PostItem[];
@@ -265,11 +267,15 @@ export function Feed({
                       className="w-11 h-11 rounded-full object-cover grayscale border-2 border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-900 flex-shrink-0"
                     />
                     <div className="min-w-0">
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 flex-wrap">
                         <span className="font-bold text-sm text-zinc-950 dark:text-white truncate">{post.author.displayName}</span>
-                        {(post.author.isVerified || post.author.isVerifiedGoogle || post.author.isVerifiedGmail) && (
-                          <ShieldCheck className="w-3.5 h-3.5 text-zinc-950 dark:text-white flex-shrink-0" />
-                        )}
+                        <UserBadge
+                          isOwner={post.author.isOwner}
+                          isVerified={post.author.isVerified || post.author.isVerifiedGoogle || post.author.isVerifiedGmail}
+                          email={post.author.email}
+                          username={post.author.username}
+                          size="xs"
+                        />
                       </div>
                       <span className="text-xs font-mono text-zinc-500 dark:text-zinc-400 block truncate">
                         @{post.author.username} • {post.timestamp}
@@ -320,20 +326,14 @@ export function Feed({
                       whileHover={{ scale: 1.05 }}
                       whileTap={{ scale: 0.95 }}
                       onClick={() => {
-                        if (user.isGuest) {
-                          onRequireAuth('tip creators');
-                          return;
-                        }
                         playSound('pop');
                         onOpenTip(post.author);
                       }}
-                      className="px-3 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-950 dark:hover:border-white text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
-                      title="Send Crypto Tip"
+                      className="px-3 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-950 dark:hover:border-white text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white text-xs font-mono transition-all flex items-center gap-1.5 cursor-pointer shadow-xs"
+                      title="View Crypto Wallets & Donate"
                     >
-                      <Zap className="w-3.5 h-3.5 text-zinc-950 dark:text-white" />
-                      <span className="text-[11px] font-bold">
-                        {post.tipsUsd > 0 ? `$${post.tipsUsd.toFixed(0)}` : 'Tip'}
-                      </span>
+                      <Wallet className="w-3.5 h-3.5 text-zinc-950 dark:text-white" />
+                      <span className="text-[11px] font-bold">Wallets</span>
                     </motion.button>
                   </div>
                 </div>
@@ -514,8 +514,11 @@ export function Feed({
                                 className="w-6 h-6 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700 flex-shrink-0 mt-0.5"
                               />
                               <div className="min-w-0 flex-1">
-                                <div className="flex items-baseline justify-between">
-                                  <span className="font-bold text-xs text-zinc-950 dark:text-white">@{comm.author}</span>
+                                <div className="flex items-baseline justify-between gap-1 flex-wrap">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-bold text-xs text-zinc-950 dark:text-white">@{comm.author}</span>
+                                    <UserBadge username={comm.author} size="xs" />
+                                  </div>
                                   <span className="text-[10px] font-mono text-zinc-500">{comm.timestamp}</span>
                                 </div>
                                 <p className="text-xs text-zinc-700 dark:text-zinc-300 mt-0.5 font-sans leading-relaxed">

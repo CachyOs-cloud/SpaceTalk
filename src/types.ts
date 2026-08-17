@@ -8,6 +8,7 @@ export interface UserProfile {
   joinedDate: string;
   location?: string;
   isVerified?: boolean;
+  isOwner?: boolean;
   isGuest?: boolean;
   email?: string;
   isVerifiedGoogle?: boolean;
@@ -41,6 +42,7 @@ export interface FollowUser {
   avatar: string;
   bio?: string;
   isVerified?: boolean;
+  isOwner?: boolean;
   followersCount?: number;
   isFollowing?: boolean;
 }
@@ -51,6 +53,8 @@ export interface StoryItem {
   username: string;
   userAvatar: string;
   hasUnseen: boolean;
+  isOwner?: boolean;
+  isVerified?: boolean;
   stories: {
     id: string;
     mediaUrl: string;
@@ -68,6 +72,8 @@ export interface CommentItem {
   timestamp: string;
   likes: number;
   isLiked?: boolean;
+  isOwner?: boolean;
+  isVerified?: boolean;
 }
 
 export interface PostItem {
@@ -77,9 +83,17 @@ export interface PostItem {
     displayName: string;
     avatar: string;
     isVerified?: boolean;
+    isOwner?: boolean;
     isVerifiedGoogle?: boolean;
     isVerifiedGmail?: boolean;
     walletAddress?: string;
+    wallets?: {
+      btc?: string;
+      eth?: string;
+      xmr?: string;
+      sol?: string;
+    };
+    email?: string;
   };
   content: string;
   images?: string[];
@@ -101,6 +115,8 @@ export interface MessageItem {
   text: string;
   timestamp: string;
   isMe: boolean;
+  isOwner?: boolean;
+  isVerified?: boolean;
   type?: 'text' | 'image' | 'audio' | 'tip';
   audioDuration?: string;
   tipAmount?: string;
@@ -133,8 +149,10 @@ export interface FriendRequest {
     avatar: string;
     bio?: string;
     isVerified?: boolean;
+    isOwner?: boolean;
     isVerifiedGoogle?: boolean;
     isVerifiedGmail?: boolean;
+    email?: string;
   };
   toUserId: string;
   timestamp: string;
@@ -150,7 +168,9 @@ export interface FriendItem {
   status: 'online' | 'offline' | 'transmitting';
   lastSeen?: string;
   isVerified?: boolean;
+  isOwner?: boolean;
   walletAddress?: string;
+  email?: string;
 }
 
 export interface ShortItem {
@@ -160,7 +180,16 @@ export interface ShortItem {
     displayName: string;
     avatar: string;
     isVerified?: boolean;
+    isOwner?: boolean;
     isVerifiedGoogle?: boolean;
+    isVerifiedGmail?: boolean;
+    wallets?: {
+      btc?: string;
+      eth?: string;
+      xmr?: string;
+      sol?: string;
+    };
+    email?: string;
   };
   videoUrl: string;
   caption: string;

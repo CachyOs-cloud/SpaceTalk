@@ -1,0 +1,88 @@
+{
+  "entities": {
+    "UserProfile": {
+      "collection": "users",
+      "fields": {
+        "id": { "type": "string", "description": "User ID" },
+        "username": { "type": "string", "description": "Unique username" },
+        "displayName": { "type": "string", "description": "Display name" },
+        "avatar": { "type": "string", "description": "Avatar URL" },
+        "banner": { "type": "string", "description": "Banner URL" },
+        "bio": { "type": "string", "description": "User biography" },
+        "joinedDate": { "type": "string", "description": "Joined date string" },
+        "location": { "type": "string", "description": "User location" },
+        "isVerified": { "type": "boolean", "description": "Whether user is verified" },
+        "isOwner": { "type": "boolean", "description": "Whether user is the platform owner" },
+        "email": { "type": "string", "description": "User email address" },
+        "isVerifiedGoogle": { "type": "boolean", "description": "Google verified status" },
+        "isVerifiedGmail": { "type": "boolean", "description": "Gmail verified status" },
+        "wallets": { "type": "object", "description": "Crypto wallet addresses" },
+        "socials": { "type": "object", "description": "Social media handles" },
+        "stats": { "type": "object", "description": "User statistics" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "PostItem": {
+      "collection": "posts",
+      "fields": {
+        "id": { "type": "string", "description": "Post ID" },
+        "author": { "type": "object", "description": "Post author profile" },
+        "content": { "type": "string", "description": "Text content" },
+        "images": { "type": "array", "description": "Attached image URLs" },
+        "timestamp": { "type": "string", "description": "Post timestamp string" },
+        "likes": { "type": "number", "description": "Like count" },
+        "isLiked": { "type": "boolean", "description": "Current user liked status" },
+        "isBookmarked": { "type": "boolean", "description": "Current user bookmarked status" },
+        "tipsUsd": { "type": "number", "description": "Total USD tips received" },
+        "commentsCount": { "type": "number", "description": "Count of comments" },
+        "comments": { "type": "array", "description": "Array of comment items" },
+        "tags": { "type": "array", "description": "Hashtags" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "ShortItem": {
+      "collection": "shorts",
+      "fields": {
+        "id": { "type": "string", "description": "Short ID" },
+        "author": { "type": "object", "description": "Short author profile" },
+        "videoUrl": { "type": "string", "description": "Video or image URL" },
+        "caption": { "type": "string", "description": "Short caption" },
+        "likes": { "type": "number", "description": "Like count" },
+        "isLiked": { "type": "boolean", "description": "Liked by user" },
+        "commentsCount": { "type": "number", "description": "Comments count" },
+        "musicTitle": { "type": "string", "description": "Audio track title" },
+        "timestamp": { "type": "string", "description": "Timestamp string" },
+        "views": { "type": "number", "description": "Views count" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "ChatChannel": {
+      "collection": "channels",
+      "fields": {
+        "id": { "type": "string", "description": "Channel ID" },
+        "name": { "type": "string", "description": "Channel name" },
+        "type": { "type": "string", "description": "direct or space" },
+        "avatar": { "type": "string", "description": "Channel avatar" },
+        "lastMessage": { "type": "string", "description": "Last message preview" },
+        "lastTime": { "type": "string", "description": "Last message timestamp" },
+        "unread": { "type": "number", "description": "Unread message count" },
+        "isEncrypted": { "type": "boolean", "description": "Whether channel is encrypted" },
+        "isUnfiltered": { "type": "boolean", "description": "Whether unfiltered channel" },
+        "membersCount": { "type": "number", "description": "Number of members" },
+        "messages": { "type": "array", "description": "List of messages" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    },
+    "FriendRequest": {
+      "collection": "friendRequests",
+      "fields": {
+        "id": { "type": "string", "description": "Request ID" },
+        "fromUser": { "type": "object", "description": "Sender details" },
+        "toUserId": { "type": "string", "description": "Recipient ID or username" },
+        "timestamp": { "type": "string", "description": "Request timestamp" },
+        "status": { "type": "string", "description": "pending, accepted, or declined" },
+        "createdAt": { "type": "string", "description": "ISO timestamp" }
+      }
+    }
+  }
+}

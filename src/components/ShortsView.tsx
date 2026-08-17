@@ -21,6 +21,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { playSound } from '../utils/sound';
+import { UserBadge } from './UserBadge';
 
 interface ShortsViewProps {
   shorts: ShortItem[];
@@ -370,9 +371,14 @@ export function ShortsView({
                   alt={currentShort.author.username}
                   className="w-9 h-9 rounded-full object-cover grayscale border border-white/40 flex-shrink-0"
                 />
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-sm text-white">{currentShort.author.displayName}</span>
-                  {currentShort.author.isVerified && <ShieldCheck className="w-3.5 h-3.5 text-white" />}
+                  <UserBadge 
+                    isOwner={currentShort.author.isOwner}
+                    isVerified={currentShort.author.isVerified || currentShort.author.isVerifiedGoogle || currentShort.author.isVerifiedGmail}
+                    username={currentShort.author.username}
+                    size="xs"
+                  />
                 </div>
                 <span className="text-xs font-mono text-zinc-400">@{currentShort.author.username}</span>
 

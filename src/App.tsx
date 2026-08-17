@@ -1,5 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { onAuthStateChanged } from 'firebase/auth';
+import { 
+  auth, 
+  getUserFromFirestore, 
+  saveUserToFirestore, 
+  subscribeToPosts, 
+  savePostToFirestore,
+  subscribeToShorts,
+  saveShortToFirestore,
+  subscribeToChannels,
+  seedInitialDataIfEmpty,
+  logOut,
+  checkIsOwner
+} from './lib/firebase';
+import { UserBadge } from './components/UserBadge';
 import { LOGOS } from './components/Logos';
 import { LoadingScreen } from './components/LoadingScreen';
 import { AuthSection } from './components/AuthSection';
@@ -41,8 +56,22 @@ import { Sun, Moon, Volume2, VolumeX, ShieldCheck, Radio, Eye, LogIn, Lock } fro
 
 export default function SpaceTalk() {
   const [loading, setLoading] = useState(true);
-  const [authStatus, setAuthStatus] = useState<string>('landing'); // immediately show login / create account
-  const [user, setUser] = useState<UserProfile | null>(null); // no profile initially
+  const [user, setUser] = useState<UserProfile | null>(() => {
+    try {
+      const cached = localStorage.getItem('spacetalk_session_user');
+      return cached ? JSON.parse(cached) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [authStatus, setAuthStatus] = useState<string>(() => {
+    try {
+      const cached = localStorage.getItem('spacetalk_session_user');
+      return cached ? 'active' : 'landing';
+    } catch {
+      return 'landing';
+    }
+  });
   const [currentTab, setCurrentTab] = useState<string>('posts'); // 'posts' | 'shorts' | 'inbox' | 'friends' | 'profile'
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [soundEnabled, setSoundEnabled] = useState(true);
@@ -84,28 +113,148 @@ export default function SpaceTalk() {
     }
   }, [theme]);
 
+  // Seed data & subscribe to Firestore collections + Auth State Persistence
   useEffect(() => {
-    const timer = setTimeout(() => {
+    // 1. Ensure initial mock collection data is available in Firestore
+    seedInitialDataIfEmpty(INITIAL_POSTS, INITIAL_SHORTS, INITIAL_CHANNELS);
+
+    // 2. Real-time listener for Posts
+    const unsubscribePosts = subscribeToPosts((firestorePosts) => {
+      if (firestorePosts && firestorePosts.length > 0) {
+        setPosts(firestorePosts);
+      }
+    });
+
+    // 3. Real-time listener for Shorts
+    const unsubscribeShorts = subscribeToShorts((firestoreShorts) => {
+      if (firestoreShorts && firestoreShorts.length > 0) {
+        setShorts(firestoreShorts);
+      }
+    });
+
+    // 4. Real-time listener for Channels
+    const unsubscribeChannels = subscribeToChannels((firestoreChannels) => {
+      if (firestoreChannels && firestoreChannels.length > 0) {
+        setChannels(firestoreChannels);
+      }
+    });
+
+    // 5. Firebase Auth State listener to maintain session across reloads
+    const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
+      if (fbUser) {
+        try {
+          const profile = await getUserFromFirestore(fbUser.uid);
+          if (profile) {
+            setUser(profile);
+            setAuthStatus('active');
+          } else {
+            // Profile not yet created in Firestore, generate from Firebase Auth data
+            const isOwner = checkIsOwner(fbUser.email || undefined);
+            const newProfile: UserProfile = {
+              id: fbUser.uid,
+              username: fbUser.email ? fbUser.email.split('@')[0] : (fbUser.displayName?.toLowerCase().replace(/\s+/g, '_') || 'explorer'),
+              displayName: fbUser.displayName || (fbUser.email?.split('@')[0] || 'Space Explorer'),
+              email: fbUser.email || undefined,
+              avatar: fbUser.photoURL || DEFAULT_AVATAR_PLACEHOLDER,
+              banner: DEFAULT_BANNER_PLACEHOLDER,
+              bio: isOwner ? 'SpaceTalk Founder & Sovereign Node Owner' : 'Verified decentralized communications node.',
+              joinedDate: new Date().toLocaleDateString('en-US', { month: 'short', year: 'numeric' }),
+              isVerified: true,
+              isOwner: isOwner,
+              isVerifiedGoogle: true,
+              isVerifiedGmail: true,
+              isGuest: false,
+              wallets: {
+                btc: 'bc1q9x3d8y2m7v0e8w2k9p4s6t1u3z5w7y8a',
+                eth: '0x71C8F32B5e69e71A598B6D197120c920D32894B2',
+                xmr: '888tNkZrPN6JsEAnkjujijjncE5nd4Bgy',
+                sol: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
+              },
+              socials: {},
+              stats: {
+                transmissions: 1,
+                followers: isOwner ? 254 : 12,
+                following: 4,
+                tipsReceivedUsd: isOwner ? 500 : 0,
+              },
+            };
+            await saveUserToFirestore(newProfile);
+            setUser(newProfile);
+            setAuthStatus('active');
+          }
+        } catch (err) {
+          console.error("Failed to restore session from Firestore:", err);
+        }
+      }
       setLoading(false);
-    }, 1500);
-    return () => clearTimeout(timer);
+    });
+
+    const fallbackTimer = setTimeout(() => {
+      setLoading(false);
+    }, 1200);
+
+    return () => {
+      unsubscribePosts();
+      unsubscribeShorts();
+      unsubscribeChannels();
+      unsubscribeAuth();
+      clearTimeout(fallbackTimer);
+    };
   }, []);
+
+  // Sync user state with localStorage to maintain persistent login on refresh
+  useEffect(() => {
+    if (user && !user.isGuest) {
+      try {
+        localStorage.setItem('spacetalk_session_user', JSON.stringify(user));
+      } catch (e) {
+        console.warn('Failed to cache session user:', e);
+      }
+    } else if (!user) {
+      localStorage.removeItem('spacetalk_session_user');
+    }
+  }, [user]);
 
   const handleUpdatePost = (updatedPost: PostItem) => {
     setPosts(prev => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
+    savePostToFirestore(updatedPost);
   };
 
   const handleCreatePost = (newPost: PostItem) => {
     setPosts([newPost, ...posts]);
-    showToast('Post broadcasted to network!');
+    savePostToFirestore(newPost);
+    showToast('Post broadcasted to network and stored in database!');
   };
 
   const handleUpdateShort = (updatedShort: ShortItem) => {
     setShorts(prev => prev.map(s => s.id === updatedShort.id ? updatedShort : s));
+    saveShortToFirestore(updatedShort);
   };
 
   const handleAddShort = (newShort: ShortItem) => {
     setShorts([newShort, ...shorts]);
+    saveShortToFirestore(newShort);
+    showToast('Short transmission broadcasted to network!');
+  };
+
+  const handleUpdateUser = (updated: UserProfile) => {
+    setUser(updated);
+    if (!updated.isGuest) {
+      saveUserToFirestore(updated);
+    }
+  };
+
+  const handleLogout = async () => {
+    playSound('pop');
+    try {
+      await logOut();
+    } catch (e) {
+      console.warn("Logout warning:", e);
+    }
+    localStorage.removeItem('spacetalk_session_user');
+    setUser(null);
+    setAuthStatus('landing');
+    showToast('Disconnected node identity.');
   };
 
   const handleAcceptFriendRequest = (reqId: string) => {
@@ -181,19 +330,6 @@ export default function SpaceTalk() {
       setChannels([newChannel, ...channels]);
     }
     setCurrentTab('inbox');
-  };
-
-  const handleTipSuccess = (amountUsd: number, currency: string) => {
-    showToast(`Successfully transmitted $${amountUsd} (${currency})!`);
-    if (user && !user.isGuest) {
-      setUser({
-        ...user,
-        stats: {
-          ...user.stats,
-          tipsReceivedUsd: (user.stats?.tipsReceivedUsd || 0) + amountUsd,
-        }
-      });
-    }
   };
 
   const handleRequireAuth = (action: string) => {
@@ -373,6 +509,20 @@ export default function SpaceTalk() {
 
               {/* Utility Action Buttons */}
               <div className="flex items-center gap-2">
+                {/* User quick badge indicator */}
+                {!user.isGuest && (
+                  <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-xs">
+                    <span className="font-bold text-zinc-950 dark:text-white">@{user.username}</span>
+                    <UserBadge
+                      isOwner={user.isOwner}
+                      isVerified={user.isVerified || user.isVerifiedGoogle || user.isVerifiedGmail}
+                      email={user.email}
+                      username={user.username}
+                      size="xs"
+                    />
+                  </div>
+                )}
+
                 {/* Sound toggle */}
                 <button
                   id="btn-sound-toggle"
@@ -543,7 +693,8 @@ export default function SpaceTalk() {
                       following={following}
                       onToggleFollow={handleToggleFollow}
                       onStartChat={handleNavigateToChat}
-                      onUpdateUser={(u) => setUser(u)}
+                      onUpdateUser={handleUpdateUser}
+                      onLogout={handleLogout}
                       onShowToast={showToast}
                       onOpenTip={(target) => setTipTargetUser(target)}
                       onRequireAuth={handleRequireAuth}
@@ -580,13 +731,13 @@ export default function SpaceTalk() {
               />
             )}
 
-            {/* Global Crypto Tipping Modal */}
+            {/* Global Creator Wallets & Donations Modal */}
             {tipTargetUser && (
               <TipModal
                 targetUser={tipTargetUser}
                 glassBase={glassBase}
                 onClose={() => setTipTargetUser(null)}
-                onTipSuccess={handleTipSuccess}
+                onShowToast={showToast}
               />
             )}
 

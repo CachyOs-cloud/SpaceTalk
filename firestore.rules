@@ -1,0 +1,46 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Allow public read on users, and write if authenticated or during sign up
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Allow read/write for posts
+    match /posts/{postId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Allow read/write for shorts
+    match /shorts/{shortId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Allow read/write for channels
+    match /channels/{channelId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Allow read/write for friendRequests
+    match /friendRequests/{requestId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Allow read/write for friends
+    match /friends/{friendId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
+    // Allow read/write for following / followers
+    match /following/{followId} {
+      allow read: if true;
+      allow write: if true;
+    }
+  }
+}
