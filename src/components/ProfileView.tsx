@@ -539,31 +539,108 @@ export function ProfileView({
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
-            className="grid grid-cols-2 gap-3"
+            className="grid grid-cols-1 sm:grid-cols-2 gap-3"
           >
             {[
-              { name: 'X / Twitter', handle: user.socials?.x, logo: LOGOS.X },
-              { name: 'Telegram', handle: user.socials?.telegram, logo: LOGOS.Telegram },
-              { name: 'Discord', handle: user.socials?.discord, logo: LOGOS.Discord },
-              { name: 'YouTube', handle: user.socials?.youtube, logo: LOGOS.YouTube },
-              { name: 'TikTok', handle: user.socials?.tiktok, logo: LOGOS.TikTok },
-              { name: 'GitHub', handle: user.socials?.github, logo: LOGOS.GitHub },
-            ].map((soc, idx) => (
-              <div
-                key={idx}
-                className="bg-white dark:bg-zinc-950 rounded-3xl p-4 border border-zinc-200 dark:border-zinc-800 flex items-center gap-3 shadow-sm"
-              >
-                <div className="w-9 h-9 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center flex-shrink-0">
-                  <soc.logo />
+              { 
+                key: 'x',
+                name: 'X / Twitter', 
+                handle: user.socials?.x, 
+                logo: LOGOS.X,
+                getUrl: (h: string) => h.startsWith('http') ? h : `https://x.com/${h.replace(/^@/, '')}`
+              },
+              { 
+                key: 'telegram',
+                name: 'Telegram', 
+                handle: user.socials?.telegram, 
+                logo: LOGOS.Telegram,
+                getUrl: (h: string) => h.startsWith('http') ? h : `https://t.me/${h.replace(/^@/, '')}`
+              },
+              { 
+                key: 'discord',
+                name: 'Discord', 
+                handle: user.socials?.discord, 
+                logo: LOGOS.Discord,
+                getUrl: (h: string) => h.startsWith('http') ? h : (h.includes('#') ? null : `https://discord.gg/${h.replace(/^@/, '')}`)
+              },
+              { 
+                key: 'youtube',
+                name: 'YouTube', 
+                handle: user.socials?.youtube, 
+                logo: LOGOS.YouTube,
+                getUrl: (h: string) => h.startsWith('http') ? h : `https://youtube.com/@${h.replace(/^@/, '')}`
+              },
+              { 
+                key: 'tiktok',
+                name: 'TikTok', 
+                handle: user.socials?.tiktok, 
+                logo: LOGOS.TikTok,
+                getUrl: (h: string) => h.startsWith('http') ? h : `https://tiktok.com/@${h.replace(/^@/, '')}`
+              },
+              { 
+                key: 'github',
+                name: 'GitHub', 
+                handle: user.socials?.github, 
+                logo: LOGOS.GitHub,
+                getUrl: (h: string) => h.startsWith('http') ? h : `https://github.com/${h.replace(/^@/, '')}`
+              },
+            ].map((soc, idx) => {
+              const hasHandle = Boolean(soc.handle && soc.handle.trim());
+              const targetUrl = hasHandle ? soc.getUrl(soc.handle!.trim()) : null;
+
+              return (
+                <div
+                  key={idx}
+                  onClick={() => {
+                    if (hasHandle) {
+                      if (targetUrl) {
+                        playSound('click');
+                        window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                      } else {
+                        // Discord handle copy
+                        navigator.clipboard.writeText(soc.handle!);
+                        playSound('pop');
+                        onShowToast(`Copied Discord handle: ${soc.handle}`);
+                      }
+                    } else {
+                      if (user.isGuest) {
+                        onRequireAuth('connect socials');
+                        return;
+                      }
+                      playSound('click');
+                      setShowEditModal(true);
+                    }
+                  }}
+                  className={`bg-white dark:bg-zinc-950 rounded-3xl p-4 border transition-all flex items-center justify-between gap-3 shadow-sm cursor-pointer ${
+                    hasHandle
+                      ? 'border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 dark:hover:border-zinc-600 hover:shadow-md'
+                      : 'border-dashed border-zinc-200 dark:border-zinc-800 hover:border-zinc-400 opacity-75 hover:opacity-100'
+                  }`}
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-9 h-9 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 flex items-center justify-center flex-shrink-0">
+                      <soc.logo />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-bold text-zinc-950 dark:text-white block">{soc.name}</span>
+                      <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate block">
+                        {soc.handle || '+ Connect Profile'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-zinc-400 dark:text-zinc-500">
+                    {hasHandle ? (
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    ) : (
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400">
+                        Add
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <span className="text-xs font-bold text-zinc-950 dark:text-white block">{soc.name}</span>
-                  <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 truncate block">
-                    {soc.handle || 'Not connected'}
-                  </span>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </motion.div>
         )}
 
@@ -781,6 +858,92 @@ export function ProfileView({
                     placeholder="Solana (SOL)"
                     className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
                   />
+                </div>
+              </div>
+
+              {/* Socials Connection */}
+              <div className="pt-2">
+                <span className="text-[11px] font-mono uppercase text-zinc-500 dark:text-zinc-400 block mb-2 font-bold">
+                  Connected Social Profiles
+                </span>
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center flex-shrink-0 text-zinc-700 dark:text-zinc-300">
+                      <LOGOS.X className="w-4 h-4 fill-current" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editX}
+                      onChange={(e) => setEditX(e.target.value)}
+                      placeholder="X / Twitter handle (e.g. @elonmusk)"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center flex-shrink-0 text-zinc-700 dark:text-zinc-300">
+                      <LOGOS.Telegram className="w-4 h-4 fill-current" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editTelegram}
+                      onChange={(e) => setEditTelegram(e.target.value)}
+                      placeholder="Telegram username"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center flex-shrink-0 text-zinc-700 dark:text-zinc-300">
+                      <LOGOS.Discord className="w-4 h-4 fill-current" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editDiscord}
+                      onChange={(e) => setEditDiscord(e.target.value)}
+                      placeholder="Discord username / invite"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center flex-shrink-0 text-zinc-700 dark:text-zinc-300">
+                      <LOGOS.TikTok className="w-4 h-4 fill-current" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editTikTok}
+                      onChange={(e) => setEditTikTok(e.target.value)}
+                      placeholder="TikTok username"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center flex-shrink-0 text-zinc-700 dark:text-zinc-300">
+                      <LOGOS.YouTube className="w-4 h-4 fill-current" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editYouTube}
+                      onChange={(e) => setEditYouTube(e.target.value)}
+                      placeholder="YouTube channel handle"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-lg bg-zinc-100 dark:bg-zinc-900 flex items-center justify-center flex-shrink-0 text-zinc-700 dark:text-zinc-300">
+                      <LOGOS.GitHub className="w-4 h-4 fill-current" />
+                    </div>
+                    <input
+                      type="text"
+                      value={editGithub}
+                      onChange={(e) => setEditGithub(e.target.value)}
+                      placeholder="GitHub username"
+                      className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 px-3.5 py-2 rounded-xl text-xs text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white font-mono"
+                    />
+                  </div>
                 </div>
               </div>
 

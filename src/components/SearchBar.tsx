@@ -99,33 +99,13 @@ export function SearchBar({
   // Filtered results
   const matchingUsers = useMemo(() => {
     if (!cleanQuery) return [];
-    const matches = searchableUsers.filter(
+    return searchableUsers.filter(
       (u) =>
         u.username.toLowerCase().includes(cleanQuery) ||
         u.displayName.toLowerCase().includes(cleanQuery) ||
         (u.bio && u.bio.toLowerCase().includes(cleanQuery))
     );
-
-    // If query looks like a valid username but not in index yet, add a synthetic option to follow/connect
-    if (
-      cleanQuery.length >= 1 &&
-      cleanQuery.length <= 18 &&
-      !matches.some((m) => m.username.toLowerCase() === cleanQuery) &&
-      cleanQuery !== currentUser?.username?.toLowerCase()
-    ) {
-      matches.push({
-        id: `discover_${cleanQuery}`,
-        username: cleanQuery,
-        displayName: cleanQuery,
-        avatar: `https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=200&auto=format&fit=crop&q=80`,
-        bio: 'Sovereign node discovery',
-        isVerified: false,
-        followersCount: 0,
-      });
-    }
-
-    return matches;
-  }, [searchableUsers, cleanQuery, currentUser]);
+  }, [searchableUsers, cleanQuery]);
 
   const matchingPosts = useMemo(() => {
     if (!cleanQuery) return [];
@@ -247,10 +227,14 @@ export function SearchBar({
 
               {/* Search Results Body */}
               <div className="flex-1 overflow-y-auto no-scrollbar p-3.5 space-y-4">
-                {totalResultsCount === 0 ? (
+                {totalResultsCount === 0 || (filterType === 'users' && matchingUsers.length === 0) ? (
                   <div className="py-10 text-center text-zinc-500 space-y-2">
-                    <p className="text-xs font-mono">No network matches found for "{query}"</p>
-                    <p className="text-[11px] text-zinc-400 dark:text-zinc-600">Try searching by username handle, hashtag (#), or keyword.</p>
+                    <p className="text-xs font-mono font-bold text-zinc-800 dark:text-zinc-200">
+                      {filterType === 'users' ? 'User is not available.' : `No network matches found for "${query}"`}
+                    </p>
+                    <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+                      {filterType === 'users' ? 'No registered node matches this handle.' : 'Try searching by username handle, hashtag (#), or keyword.'}
+                    </p>
                   </div>
                 ) : (
                   <>

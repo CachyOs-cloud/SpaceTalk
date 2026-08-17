@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ChatChannel, ChatMessage, UserProfile } from '../types';
+import { ChatChannel, ChatMessage, UserProfile, FollowUser } from '../types';
 import { 
   Send, 
   Paperclip, 
@@ -21,6 +21,8 @@ import {
   Plus,
   X,
   Sparkles,
+  Users,
+  MessageSquare,
   ShieldAlert
 } from 'lucide-react';
 import { playSound } from '../utils/sound';
@@ -30,6 +32,8 @@ interface ChatViewProps {
   user: UserProfile;
   glass: string;
   rounded: string;
+  following?: FollowUser[];
+  initialChannelId?: string | null;
   onOpenTip: (targetUser: { username: string; displayName?: string; avatar?: string }) => void;
   onUpdateChannels: (channels: ChatChannel[]) => void;
   onRequireAuth: (action: string) => void;
@@ -41,12 +45,14 @@ export function ChatView({
   user,
   glass,
   rounded,
+  following = [],
+  initialChannelId,
   onOpenTip,
   onUpdateChannels,
   onRequireAuth,
   onShowToast,
 }: ChatViewProps) {
-  const [activeChannelId, setActiveChannelId] = useState<string>(channels[0]?.id || '');
+  const [activeChannelId, setActiveChannelId] = useState<string>(initialChannelId || channels[0]?.id || '');
   const [messageInput, setMessageInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isCalling, setIsCalling] = useState(false);
@@ -58,6 +64,12 @@ export function ChatView({
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (initialChannelId) {
+      setActiveChannelId(initialChannelId);
+    }
+  }, [initialChannelId]);
 
   const activeChannel = channels.find((c) => c.id === activeChannelId) || channels[0];
 
@@ -173,6 +185,49 @@ export function ChatView({
     }, 1500);
   };
 
+  const handleStartChatWithFollowedUser = (targetUser: FollowUser) => {
+    const clean = targetUser.username.trim().replace(/^@/, '');
+    const existing = channels.find(
+      (c) => c.name.toLowerCase() === clean.toLowerCase() || c.name.toLowerCase() === targetUser.displayName.toLowerCase()
+    );
+
+    if (existing) {
+      setActiveChannelId(existing.id);
+      setShowNewChatModal(false);
+      playSound('click');
+      return;
+    }
+
+    const newChannel: ChatChannel = {
+      id: `ch_${Date.now()}`,
+      name: targetUser.displayName || clean,
+      type: 'direct',
+      avatar: targetUser.avatar,
+      lastMessage: 'Direct unfiltered channel initialized',
+      lastTime: 'Just now',
+      unread: 0,
+      isEncrypted: true,
+      isUnfiltered: true,
+      messages: [
+        {
+          id: `m_init_${Date.now()}`,
+          senderId: 'system',
+          senderName: 'Mesh Protocol',
+          senderAvatar: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=300&auto=format&fit=crop&q=80',
+          text: `Direct unfiltered communication link established with @${clean}. Zero censorship active.`,
+          timestamp: 'Just now',
+          isMe: false,
+        },
+      ],
+    };
+
+    onUpdateChannels([newChannel, ...channels]);
+    setActiveChannelId(newChannel.id);
+    setShowNewChatModal(false);
+    playSound('chime');
+    onShowToast(`Opened direct chat with @${clean}!`);
+  };
+
   const handleStartNewChat = (e: React.FormEvent) => {
     e.preventDefault();
     if (user.isGuest) {
@@ -186,11 +241,23 @@ export function ChatView({
       return;
     }
 
+    // Check if channel already exists
+    const existing = channels.find((c) => c.name.toLowerCase() === clean.toLowerCase());
+    if (existing) {
+      setActiveChannelId(existing.id);
+      setShowNewChatModal(false);
+      setNewChatHandle('');
+      playSound('click');
+      return;
+    }
+
+    const followMatch = following.find((f) => f.username.toLowerCase() === clean.toLowerCase());
+
     const newChannel: ChatChannel = {
       id: `ch_${Date.now()}`,
-      name: clean,
+      name: followMatch?.displayName || clean,
       type: 'direct',
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+      avatar: followMatch?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
       lastMessage: 'Unfiltered P2P channel initialized',
       lastTime: 'Just now',
       unread: 0,
@@ -244,12 +311,46 @@ export function ChatView({
               playSound('click');
               setShowNewChatModal(true);
             }}
-            className="p-2 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black hover:opacity-90 transition-all font-bold shadow-md cursor-pointer"
+            className="p-2 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black hover:opacity-90 transition-all font-bold shadow-md cursor-pointer flex items-center gap-1 text-xs"
             title="Start New Unfiltered Chat"
           >
             <Plus className="w-4 h-4" />
+            <span className="text-[10px] font-mono uppercase hidden sm:inline">New</span>
           </button>
         </div>
+
+        {/* Quick Following Carousel (Chat to whoever you follow) */}
+        {following.length > 0 && (
+          <div className="p-3 border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900/60">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-[10px] font-mono uppercase text-zinc-400 dark:text-zinc-500 font-bold flex items-center gap-1">
+                <Users className="w-3 h-3" /> Chat With Following ({following.length})
+              </span>
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-0.5">
+              {following.map((followed) => (
+                <button
+                  key={followed.id || followed.username}
+                  onClick={() => handleStartChatWithFollowedUser(followed)}
+                  className="flex flex-col items-center gap-1 flex-shrink-0 group cursor-pointer"
+                  title={`Chat with @${followed.username}`}
+                >
+                  <div className="relative">
+                    <img
+                      src={followed.avatar}
+                      alt={followed.username}
+                      className="w-10 h-10 rounded-full object-cover grayscale border-2 border-zinc-300 dark:border-zinc-700 group-hover:border-zinc-950 dark:group-hover:border-white transition-all"
+                    />
+                    <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-zinc-950" />
+                  </div>
+                  <span className="text-[9px] font-mono text-zinc-600 dark:text-zinc-400 group-hover:text-zinc-950 dark:group-hover:text-white truncate max-w-[48px] block">
+                    @{followed.username}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search */}
         <div className="p-3 border-b border-zinc-200 dark:border-zinc-800">
@@ -451,17 +552,17 @@ export function ChatView({
                         <img
                           src={msg.imageUrl}
                           alt="Attachment"
-                          className="rounded-xl mb-2 max-h-56 w-full object-cover border border-zinc-200 dark:border-zinc-700"
+                          className="rounded-xl max-h-60 w-full object-cover mb-2 border border-zinc-300 dark:border-zinc-700"
                         />
                       )}
 
                       {msg.type === 'audio' ? (
-                        <div className="flex items-center gap-2 font-mono text-[11px]">
-                          <Volume2 className="w-4 h-4" />
-                          <span>Voice Note ({msg.audioDuration})</span>
+                        <div className="flex items-center gap-2 font-mono text-xs">
+                          <Volume2 className="w-4 h-4 animate-pulse" />
+                          <span>Voice transmission ({msg.audioDuration})</span>
                         </div>
                       ) : (
-                        <p className="whitespace-pre-wrap">{msg.text}</p>
+                        <p>{msg.text}</p>
                       )}
                     </div>
                   </div>
@@ -470,24 +571,35 @@ export function ChatView({
               <div ref={messagesEndRef} />
             </div>
 
-            {/* Image Attachment Preview */}
+            {/* Attached Image Preview */}
             {attachedImage && (
               <div className="px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-t border-zinc-200 dark:border-zinc-800 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <img src={attachedImage} alt="Preview" className="w-10 h-10 rounded-lg object-cover border border-zinc-300 dark:border-zinc-700" />
-                  <span className="text-xs font-mono text-zinc-950 dark:text-white">Image attached</span>
+                  <img src={attachedImage} alt="Attachment" className="w-10 h-10 rounded-lg object-cover" />
+                  <span className="text-xs font-mono text-zinc-600 dark:text-zinc-400">Attached image</span>
                 </div>
                 <button
                   onClick={() => setAttachedImage(null)}
-                  className="p-1 rounded-full bg-zinc-200 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white cursor-pointer"
+                  className="p-1 rounded-full bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 text-zinc-700 dark:text-white cursor-pointer"
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
             )}
 
-            {/* Chat Input Bar */}
-            <form onSubmit={handleSendMessage} className="p-3 sm:p-4 border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950 flex items-center gap-2">
+            {/* Input Bar */}
+            <form
+              onSubmit={handleSendMessage}
+              className="p-3 sm:p-4 border-t border-zinc-200 dark:border-zinc-800 flex items-center gap-2 bg-white dark:bg-zinc-950"
+            >
+              <button
+                type="button"
+                onClick={() => imageInputRef.current?.click()}
+                className="p-3 text-zinc-500 hover:text-zinc-950 dark:hover:text-white rounded-2xl hover:bg-zinc-100 dark:hover:bg-zinc-900 transition-all cursor-pointer"
+                title="Attach Photo"
+              >
+                <Image className="w-4 h-4" />
+              </button>
               <input
                 ref={imageInputRef}
                 type="file"
@@ -496,26 +608,16 @@ export function ChatView({
                 className="hidden"
               />
 
-              {/* Upload Image Button */}
-              <button
-                type="button"
-                onClick={() => imageInputRef.current?.click()}
-                className="p-2.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border border-zinc-200 dark:border-zinc-800 text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white transition-colors cursor-pointer shadow-xs"
-                title="Attach Photo"
-              >
-                <Image className="w-4 h-4" />
-              </button>
-
-              {/* Record Audio Button */}
               <button
                 type="button"
                 onClick={handleSendAudioMock}
-                className={`p-2.5 rounded-xl border transition-colors cursor-pointer ${
+                disabled={isRecordingAudio}
+                className={`p-3 rounded-2xl transition-all cursor-pointer ${
                   isRecordingAudio
-                    ? 'bg-red-600 text-white border-red-500 animate-pulse'
-                    : 'bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 border-zinc-200 dark:border-zinc-800 text-zinc-600 hover:text-zinc-950 dark:text-zinc-400 dark:hover:text-white shadow-xs'
+                    ? 'bg-red-500 text-white animate-ping'
+                    : 'text-zinc-500 hover:text-zinc-950 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-900'
                 }`}
-                title="Record Unfiltered Audio"
+                title="Record Audio Note"
               >
                 <Mic className="w-4 h-4" />
               </button>
@@ -553,7 +655,7 @@ export function ChatView({
           <motion.div
             initial={{ scale: 0.95, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white dark:bg-zinc-950 rounded-[32px] w-full max-w-sm p-6 border border-zinc-200 dark:border-zinc-800 shadow-2xl relative text-left text-zinc-950 dark:text-white"
+            className="bg-white dark:bg-zinc-950 rounded-[32px] w-full max-w-md p-6 border border-zinc-200 dark:border-zinc-800 shadow-2xl relative text-left text-zinc-950 dark:text-white max-h-[85vh] overflow-y-auto no-scrollbar"
           >
             <button
               onClick={() => setShowNewChatModal(false)}
@@ -567,13 +669,58 @@ export function ChatView({
               <h3 className="text-base font-bold text-zinc-950 dark:text-white uppercase">New Unfiltered Link</h3>
             </div>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-              Enter any 1-18 character handle to open a direct, censorship-free messaging node.
+              Chat with anyone you follow or enter any handle to start a direct, censorship-free messaging node.
             </p>
+
+            {/* People You Follow Section */}
+            {following.length > 0 && (
+              <div className="mb-5 pb-4 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-center justify-between mb-2.5">
+                  <span className="text-[11px] font-mono uppercase font-bold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5" /> People You Follow ({following.length})
+                  </span>
+                </div>
+
+                <div className="space-y-1.5 max-h-44 overflow-y-auto no-scrollbar">
+                  {following.map((followedUser) => (
+                    <div
+                      key={followedUser.id || followedUser.username}
+                      className="p-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 hover:border-zinc-400 dark:hover:border-zinc-600 transition-all"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <img
+                          src={followedUser.avatar}
+                          alt={followedUser.username}
+                          className="w-8 h-8 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700 flex-shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <span className="text-xs font-bold text-zinc-950 dark:text-white block truncate">
+                            {followedUser.displayName}
+                          </span>
+                          <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 block truncate">
+                            @{followedUser.username}
+                          </span>
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={() => handleStartChatWithFollowedUser(followedUser)}
+                        className="px-3 py-1.5 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black font-mono font-bold text-[11px] flex items-center gap-1 hover:opacity-90 transition-all cursor-pointer shadow-xs"
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        <span>Chat</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleStartNewChat} className="space-y-3">
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 uppercase">Username (1-18 chars)</label>
+                  <label className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 uppercase">Or Enter Handle (1-18 chars)</label>
                   <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">{newChatHandle.length}/18</span>
                 </div>
                 <div className="relative">

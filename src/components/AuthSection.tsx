@@ -271,7 +271,7 @@ export function AuthSection({
       if (newFails >= 3) {
         setSuspiciousWarning('⚠️ Suspicious Activity Detected: Multiple failed authentication attempts on this handle. Security alert logged.');
       } else {
-        setAuthError(err.message || 'Account not found or passphrase incorrect.');
+        setAuthError('User is not available.');
       }
     } finally {
       setIsLoading(false);
@@ -305,8 +305,8 @@ export function AuthSection({
               <Crown className="w-4 h-4 text-amber-500 fill-amber-400 animate-bounce" />
             )}
           </h1>
-          <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Sovereign Planetary Network & Firestore Database
+          <p className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 mt-0.5 tracking-wider">
+            Enter the void.
           </p>
         </div>
 
