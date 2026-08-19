@@ -4,7 +4,14 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { 
   auth, 
   getUserFromFirestore, 
-  saveUserToFirestore, 
+  saveUserToFirestore,
+  updateUsernameInFirestore,
+  subscribeToAllUsers,
+  saveFollowingToFirestore,
+  getFollowingFromFirestore,
+  saveFollowersToFirestore,
+  getFollowersFromFirestore,
+  toggleFollowInFirestore,
   subscribeToPosts, 
   savePostToFirestore,
   subscribeToShorts,
@@ -36,7 +43,8 @@ import {
   FriendRequest, 
   FriendItem, 
   ShortItem,
-  FollowUser
+  FollowUser,
+  SavedAccount
 } from './types';
 import { 
   INITIAL_USER, 
@@ -83,8 +91,64 @@ export default function SpaceTalk() {
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(INITIAL_FRIEND_REQUESTS);
   const [friends, setFriends] = useState<FriendItem[]>(INITIAL_FRIENDS);
   const [shorts, setShorts] = useState<ShortItem[]>(INITIAL_SHORTS);
-  const [following, setFollowing] = useState<FollowUser[]>([]);
-  const [followers, setFollowers] = useState<FollowUser[]>([]);
+  const [following, setFollowing] = useState<FollowUser[]>(() => {
+    try {
+      const cached = localStorage.getItem('spacetalk_session_user');
+      if (cached) {
+        const u = JSON.parse(cached);
+        if (Array.isArray(u.followingList) && u.followingList.length > 0) {
+          return u.followingList.filter((f: any) => f && f.username);
+        }
+      }
+      const cachedFollowing = localStorage.getItem('spacetalk_following_cache');
+      return cachedFollowing ? JSON.parse(cachedFollowing).filter((f: any) => f && f.username) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [followers, setFollowers] = useState<FollowUser[]>(() => {
+    try {
+      const cached = localStorage.getItem('spacetalk_session_user');
+      if (cached) {
+        const u = JSON.parse(cached);
+        if (Array.isArray(u.followersList) && u.followersList.length > 0) {
+          return u.followersList.filter((f: any) => f && f.username);
+        }
+      }
+      const cachedFollowers = localStorage.getItem('spacetalk_followers_cache');
+      return cachedFollowers ? JSON.parse(cachedFollowers).filter((f: any) => f && f.username) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
+  const [savedAccounts, setSavedAccounts] = useState<SavedAccount[]>(() => {
+    try {
+      const raw = localStorage.getItem('spacetalk_saved_accounts');
+      if (raw) return JSON.parse(raw);
+      const cached = localStorage.getItem('spacetalk_session_user');
+      if (cached) {
+        const u = JSON.parse(cached);
+        if (!u.isGuest) {
+          return [{
+            id: u.id,
+            username: u.username,
+            displayName: u.displayName || u.username,
+            avatar: u.avatar || DEFAULT_AVATAR_PLACEHOLDER,
+            email: u.email,
+            isOwner: u.isOwner,
+            isVerified: u.isVerified,
+            lastActive: new Date().toISOString(),
+          }];
+        }
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  });
 
   // Modals & Toast State
   const [activeStoryIndex, setActiveStoryIndex] = useState<number | null>(null);
@@ -139,7 +203,14 @@ export default function SpaceTalk() {
       }
     });
 
-    // 5. Firebase Auth State listener to maintain session across reloads
+    // 5. Real-time listener for All Network Users (for universal search and handle indexing)
+    const unsubscribeUsers = subscribeToAllUsers((firestoreUsers) => {
+      if (firestoreUsers && firestoreUsers.length > 0) {
+        setAllUsers(firestoreUsers);
+      }
+    });
+
+    // 6. Firebase Auth State listener to maintain session across reloads
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         try {
@@ -147,6 +218,24 @@ export default function SpaceTalk() {
           if (profile) {
             setUser(profile);
             setAuthStatus('active');
+            // Sync following from Firestore
+            if (profile.followingList && profile.followingList.length > 0) {
+              setFollowing(profile.followingList.filter((f) => f && f.username));
+            } else {
+              const remoteFollows = await getFollowingFromFirestore(fbUser.uid);
+              if (remoteFollows && remoteFollows.length > 0) {
+                setFollowing(remoteFollows.filter((f) => f && f.username));
+              }
+            }
+            // Sync followers from Firestore
+            if (profile.followersList && profile.followersList.length > 0) {
+              setFollowers(profile.followersList.filter((f) => f && f.username));
+            } else {
+              const remoteFollowers = await getFollowersFromFirestore(fbUser.uid);
+              if (remoteFollowers && remoteFollowers.length > 0) {
+                setFollowers(remoteFollowers.filter((f) => f && f.username));
+              }
+            }
           } else {
             // Profile not yet created in Firestore, generate from Firebase Auth data
             const isOwner = checkIsOwner(fbUser.email || undefined);
@@ -197,16 +286,39 @@ export default function SpaceTalk() {
       unsubscribePosts();
       unsubscribeShorts();
       unsubscribeChannels();
+      unsubscribeUsers();
       unsubscribeAuth();
       clearTimeout(fallbackTimer);
     };
   }, []);
 
-  // Sync user state with localStorage to maintain persistent login on refresh
+  // Sync user state with localStorage and savedAccounts list to maintain persistent multi-account state
   useEffect(() => {
     if (user && !user.isGuest) {
       try {
         localStorage.setItem('spacetalk_session_user', JSON.stringify(user));
+        setSavedAccounts((prev) => {
+          const existingIdx = prev.findIndex((a) => a.id === user.id || a.username.toLowerCase() === user.username.toLowerCase());
+          const newEntry: SavedAccount = {
+            id: user.id,
+            username: user.username,
+            displayName: user.displayName || user.username,
+            avatar: user.avatar || DEFAULT_AVATAR_PLACEHOLDER,
+            email: user.email,
+            isOwner: user.isOwner,
+            isVerified: user.isVerified,
+            lastActive: new Date().toISOString(),
+          };
+          let updated: SavedAccount[];
+          if (existingIdx >= 0) {
+            updated = [...prev];
+            updated[existingIdx] = newEntry;
+          } else {
+            updated = [newEntry, ...prev];
+          }
+          localStorage.setItem('spacetalk_saved_accounts', JSON.stringify(updated));
+          return updated;
+        });
       } catch (e) {
         console.warn('Failed to cache session user:', e);
       }
@@ -214,6 +326,30 @@ export default function SpaceTalk() {
       localStorage.removeItem('spacetalk_session_user');
     }
   }, [user]);
+
+  // Sync following cache
+  useEffect(() => {
+    if (user && !user.isGuest) {
+      try {
+        localStorage.setItem('spacetalk_following_cache', JSON.stringify(following));
+        localStorage.setItem(`spacetalk_following_${user.id}`, JSON.stringify(following));
+      } catch (e) {
+        console.warn('Failed to cache following:', e);
+      }
+    }
+  }, [following, user]);
+
+  // Sync followers cache
+  useEffect(() => {
+    if (user && !user.isGuest) {
+      try {
+        localStorage.setItem('spacetalk_followers_cache', JSON.stringify(followers));
+        localStorage.setItem(`spacetalk_followers_${user.id}`, JSON.stringify(followers));
+      } catch (e) {
+        console.warn('Failed to cache followers:', e);
+      }
+    }
+  }, [followers, user]);
 
   const handleUpdatePost = (updatedPost: PostItem) => {
     setPosts(prev => prev.map(p => p.id === updatedPost.id ? updatedPost : p));
@@ -242,6 +378,109 @@ export default function SpaceTalk() {
     if (!updated.isGuest) {
       saveUserToFirestore(updated);
     }
+  };
+
+  const handleUpdateUsername = async (newUsername: string): Promise<boolean> => {
+    if (!user || user.isGuest) return false;
+    try {
+      const res = await updateUsernameInFirestore(user.id, user.username, newUsername);
+      if (res && res.success) {
+        const updatedUser: UserProfile = { ...user, username: res.newUsername };
+        setUser(updatedUser);
+        setSavedAccounts((prev) => {
+          const next = prev.map((a) => (a.id === user.id ? { ...a, username: res.newUsername } : a));
+          localStorage.setItem('spacetalk_saved_accounts', JSON.stringify(next));
+          return next;
+        });
+        showToast(`Sovereign handle updated to @${res.newUsername}`);
+        return true;
+      }
+      return false;
+    } catch (err: any) {
+      showToast(err?.message || 'Failed to update username handle.');
+      throw err;
+    }
+  };
+
+  const handleRemoveSavedAccount = (accountIdOrUsername: string) => {
+    playSound('pop');
+    setSavedAccounts((prev) => {
+      const filtered = prev.filter(
+        (a) => a.id !== accountIdOrUsername && a.username.toLowerCase() !== accountIdOrUsername.toLowerCase()
+      );
+      localStorage.setItem('spacetalk_saved_accounts', JSON.stringify(filtered));
+      return filtered;
+    });
+    showToast('Node account removed from this device.');
+  };
+
+  const handleSwitchAccount = async (targetAccount: SavedAccount | UserProfile) => {
+    playSound('chime');
+    let fullProfile: UserProfile | null = null;
+    try {
+      fullProfile = await getUserFromFirestore(targetAccount.id);
+    } catch (e) {
+      console.warn("Failed to fetch full user on switch:", e);
+    }
+
+    if (!fullProfile) {
+      fullProfile = {
+        id: targetAccount.id,
+        username: targetAccount.username,
+        displayName: targetAccount.displayName,
+        avatar: targetAccount.avatar || DEFAULT_AVATAR_PLACEHOLDER,
+        banner: (targetAccount as UserProfile).banner || DEFAULT_BANNER_PLACEHOLDER,
+        bio: (targetAccount as UserProfile).bio || 'Decentralized node operator.',
+        joinedDate: (targetAccount as UserProfile).joinedDate || 'Recently',
+        isOwner: targetAccount.isOwner,
+        isVerified: targetAccount.isVerified,
+        isGuest: false,
+        email: targetAccount.email,
+        wallets: (targetAccount as UserProfile).wallets || {
+          btc: 'bc1q9x3d8y2m7v0e8w2k9p4s6t1u3z5w7y8a',
+          eth: '0x71C8F32B5e69e71A598B6D197120c920D32894B2',
+          xmr: '888tNkZrPN6JsEAnkjujijjncE5nd4Bgy',
+          sol: '7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU',
+        },
+        socials: (targetAccount as UserProfile).socials || {},
+        stats: (targetAccount as UserProfile).stats || {
+          transmissions: 0,
+          followers: 0,
+          following: 0,
+          tipsReceivedUsd: 0,
+        },
+      };
+    }
+
+    setUser(fullProfile);
+    setAuthStatus('active');
+    try {
+      localStorage.setItem('spacetalk_session_user', JSON.stringify(fullProfile));
+      if (fullProfile.followingList && fullProfile.followingList.length > 0) {
+        setFollowing(fullProfile.followingList.filter((f) => f && f.username));
+      } else {
+        const remoteFollows = await getFollowingFromFirestore(fullProfile.id);
+        if (remoteFollows && remoteFollows.length > 0) {
+          setFollowing(remoteFollows.filter((f) => f && f.username));
+        } else {
+          setFollowing([]);
+        }
+      }
+
+      if (fullProfile.followersList && fullProfile.followersList.length > 0) {
+        setFollowers(fullProfile.followersList.filter((f) => f && f.username));
+      } else {
+        const remoteFollowers = await getFollowersFromFirestore(fullProfile.id);
+        if (remoteFollowers && remoteFollowers.length > 0) {
+          setFollowers(remoteFollowers.filter((f) => f && f.username));
+        } else {
+          setFollowers([]);
+        }
+      }
+    } catch (e) {
+      console.warn("Failed to complete account switch:", e);
+    }
+    showToast(`Switched account to @${fullProfile.username}`);
   };
 
   const handleLogout = async () => {
@@ -301,15 +540,39 @@ export default function SpaceTalk() {
   };
 
   const handleNavigateToChat = (friendUsername: string) => {
+    const cleanUsername = friendUsername.trim().replace(/^@/, '');
+    if (!cleanUsername) return;
+
+    // Ensure the peer is in following list if logged in
+    if (user && !user.isGuest) {
+      const isAlreadyFollowed = following.some(
+        (f) => f.username.toLowerCase() === cleanUsername.toLowerCase()
+      );
+      if (!isAlreadyFollowed) {
+        const newFollow: FollowUser = {
+          id: `follow_${Date.now()}`,
+          username: cleanUsername,
+          displayName: cleanUsername,
+          avatar: DEFAULT_AVATAR_PLACEHOLDER,
+          bio: 'Sovereign peer node',
+          isFollowing: true,
+        };
+        const updatedFollows = [newFollow, ...following.filter((f) => f && f.username)];
+        setFollowing(updatedFollows);
+        saveFollowingToFirestore(user.id, updatedFollows);
+      }
+    }
+
     // Check if channel already exists
-    let existingChannel = channels.find(c => c.name.toLowerCase() === friendUsername.toLowerCase());
+    let existingChannel = channels.find(c => c.name.toLowerCase() === cleanUsername.toLowerCase());
     if (!existingChannel) {
-      const friendObj = friends.find(f => f.username.toLowerCase() === friendUsername.toLowerCase());
+      const friendObj = friends.find(f => f.username.toLowerCase() === cleanUsername.toLowerCase());
+      const followObj = following.find(f => f.username.toLowerCase() === cleanUsername.toLowerCase());
       const newChannel: ChatChannel = {
         id: `ch_${Date.now()}`,
-        name: friendObj?.displayName || friendUsername,
+        name: friendObj?.displayName || followObj?.displayName || cleanUsername,
         type: 'direct',
-        avatar: friendObj?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+        avatar: friendObj?.avatar || followObj?.avatar || DEFAULT_AVATAR_PLACEHOLDER,
         lastMessage: 'Direct unfiltered handshake established',
         lastTime: 'Just now',
         unread: 0,
@@ -321,7 +584,7 @@ export default function SpaceTalk() {
             senderId: 'system',
             senderName: 'Mesh Relay',
             senderAvatar: 'https://images.unsplash.com/photo-1451187580459-43490279c0fa?w=300&auto=format&fit=crop&q=80',
-            text: `Unfiltered encryption channel active with @${friendUsername}.`,
+            text: `Unfiltered encryption channel active with @${cleanUsername}.`,
             timestamp: 'Just now',
             isMe: false,
           }
@@ -337,54 +600,85 @@ export default function SpaceTalk() {
     setGuestRestrictionAction(action);
   };
 
-  const handleToggleFollow = (targetUsername: string, userDetails?: Partial<FollowUser>) => {
+  const handleToggleFollow = async (targetUsername: string, userDetails?: Partial<FollowUser>) => {
     if (user?.isGuest) {
       handleRequireAuth('follow creators');
       return;
     }
 
+    const cleanTarget = targetUsername.trim().replace(/^@/, '');
+    if (!cleanTarget) return;
+
     const isCurrentlyFollowing = following.some(
-      (f) => f.username.toLowerCase() === targetUsername.toLowerCase()
+      (f) => f && f.username && f.username.toLowerCase() === cleanTarget.toLowerCase()
     );
 
     if (isCurrentlyFollowing) {
       playSound('pop');
-      setFollowing((prev) =>
-        prev.filter((f) => f.username.toLowerCase() !== targetUsername.toLowerCase())
+      const updatedFollowing = following.filter(
+        (f) => f && f.username && f.username.toLowerCase() !== cleanTarget.toLowerCase()
       );
+      setFollowing(updatedFollowing);
       if (user) {
-        setUser({
+        const updatedUser: UserProfile = {
           ...user,
           stats: {
             ...user.stats,
-            following: Math.max(0, (user.stats?.following || 1) - 1),
+            following: updatedFollowing.length,
           },
-        });
+          followingList: updatedFollowing,
+        };
+        setUser(updatedUser);
+        saveFollowingToFirestore(user.id, updatedFollowing);
+        toggleFollowInFirestore(user, cleanTarget, false, userDetails);
       }
-      showToast(`Unfollowed @${targetUsername}`);
+      showToast(`Unfollowed @${cleanTarget}`);
     } else {
       playSound('chime');
       const newFollow: FollowUser = {
         id: userDetails?.id || `follow_${Date.now()}`,
-        username: targetUsername,
-        displayName: userDetails?.displayName || targetUsername,
+        username: cleanTarget,
+        displayName: userDetails?.displayName || cleanTarget,
         avatar: userDetails?.avatar || DEFAULT_AVATAR_PLACEHOLDER,
         bio: userDetails?.bio || 'Sovereign network peer node',
         isVerified: userDetails?.isVerified,
         followersCount: (userDetails?.followersCount || 0) + 1,
         isFollowing: true,
       };
-      setFollowing((prev) => [newFollow, ...prev]);
+      const updatedFollowing = [
+        newFollow,
+        ...following.filter((f) => f && f.username && f.username.toLowerCase() !== cleanTarget.toLowerCase()),
+      ];
+      setFollowing(updatedFollowing);
       if (user) {
-        setUser({
+        const updatedUser: UserProfile = {
           ...user,
           stats: {
             ...user.stats,
-            following: (user.stats?.following || 0) + 1,
+            following: updatedFollowing.length,
           },
-        });
+          followingList: updatedFollowing,
+        };
+        setUser(updatedUser);
+        saveFollowingToFirestore(user.id, updatedFollowing);
+        toggleFollowInFirestore(user, cleanTarget, true, userDetails);
       }
-      showToast(`Now following @${targetUsername}!`);
+      showToast(`Now following @${cleanTarget}!`);
+    }
+  };
+
+  const handleRefreshFollowers = async () => {
+    if (!user || user.isGuest) return;
+    try {
+      const [remoteFollowers, remoteFollowing] = await Promise.all([
+        getFollowersFromFirestore(user.id),
+        getFollowingFromFirestore(user.id),
+      ]);
+      if (remoteFollowers) setFollowers(remoteFollowers);
+      if (remoteFollowing) setFollowing(remoteFollowing);
+      showToast('Followers & Following synchronized with sovereign database');
+    } catch (err) {
+      console.warn('Refresh error:', err);
     }
   };
 
@@ -565,7 +859,7 @@ export default function SpaceTalk() {
                   <img
                     src={user.avatar}
                     alt={user.username}
-                    className="w-8 h-8 rounded-full object-cover group-hover:scale-105 transition-transform grayscale"
+                    className="w-8 h-8 rounded-full object-cover group-hover:scale-105 transition-transform"
                   />
                 </button>
               </div>
@@ -590,6 +884,7 @@ export default function SpaceTalk() {
                       glass={glassBase}
                       rounded={roundedMedium}
                       following={following}
+                      allUsers={allUsers}
                       onToggleFollow={handleToggleFollow}
                       onStartChat={handleNavigateToChat}
                       onOpenStories={(idx) => setActiveStoryIndex(idx)}
@@ -691,9 +986,17 @@ export default function SpaceTalk() {
                       rounded={roundedMedium}
                       followers={followers}
                       following={following}
+                      savedAccounts={savedAccounts}
                       onToggleFollow={handleToggleFollow}
+                      onRefreshFollowers={handleRefreshFollowers}
                       onStartChat={handleNavigateToChat}
                       onUpdateUser={handleUpdateUser}
+                      onUpdateUsername={handleUpdateUsername}
+                      onSwitchAccount={handleSwitchAccount}
+                      onAddAnotherAccount={() => {
+                        setAuthStatus('landing');
+                      }}
+                      onRemoveSavedAccount={handleRemoveSavedAccount}
                       onLogout={handleLogout}
                       onShowToast={showToast}
                       onOpenTip={(target) => setTipTargetUser(target)}

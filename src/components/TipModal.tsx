@@ -79,7 +79,7 @@ export function TipModal({
           <img
             src={targetUser.avatar || 'https://images.unsplash.com/photo-1541185933-ef5d8ed016c2?w=200&auto=format&fit=crop&q=80'}
             alt={targetUser.username}
-            className="w-13 h-13 rounded-full object-cover border-2 border-zinc-200 dark:border-zinc-700 grayscale flex-shrink-0"
+            className="w-13 h-13 rounded-full object-cover border-2 border-zinc-200 dark:border-zinc-700 flex-shrink-0"
           />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 flex-wrap">

@@ -241,6 +241,14 @@ export function ChatView({
       return;
     }
 
+    // Enforce: User can only chat with people they follow
+    const followMatch = following.find((f) => f.username.toLowerCase() === clean.toLowerCase());
+    if (!followMatch) {
+      playSound('pop');
+      onShowToast(`You can only message peers you follow. Follow @${clean} first to chat.`);
+      return;
+    }
+
     // Check if channel already exists
     const existing = channels.find((c) => c.name.toLowerCase() === clean.toLowerCase());
     if (existing) {
@@ -251,13 +259,11 @@ export function ChatView({
       return;
     }
 
-    const followMatch = following.find((f) => f.username.toLowerCase() === clean.toLowerCase());
-
     const newChannel: ChatChannel = {
       id: `ch_${Date.now()}`,
-      name: followMatch?.displayName || clean,
+      name: followMatch.displayName || clean,
       type: 'direct',
-      avatar: followMatch?.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
+      avatar: followMatch.avatar || 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=300&auto=format&fit=crop&q=80',
       lastMessage: 'Unfiltered P2P channel initialized',
       lastTime: 'Just now',
       unread: 0,
@@ -339,7 +345,7 @@ export function ChatView({
                     <img
                       src={followed.avatar}
                       alt={followed.username}
-                      className="w-10 h-10 rounded-full object-cover grayscale border-2 border-zinc-300 dark:border-zinc-700 group-hover:border-zinc-950 dark:group-hover:border-white transition-all"
+                      className="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-700 group-hover:border-zinc-950 dark:group-hover:border-white transition-all"
                     />
                     <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-zinc-950" />
                   </div>
@@ -407,7 +413,7 @@ export function ChatView({
                     <img
                       src={channel.avatar}
                       alt={channel.name}
-                      className="w-11 h-11 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700"
+                      className="w-11 h-11 rounded-full object-cover border border-zinc-300 dark:border-zinc-700"
                     />
                     {channel.unread > 0 && (
                       <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-zinc-950 text-white dark:bg-white dark:text-black text-[9px] font-black flex items-center justify-center">
@@ -448,7 +454,7 @@ export function ChatView({
                   <img
                     src={activeChannel.avatar}
                     alt={activeChannel.name}
-                    className="w-10 h-10 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700"
+                    className="w-10 h-10 rounded-full object-cover border border-zinc-300 dark:border-zinc-700"
                   />
                   <span className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-emerald-500 border border-white dark:border-black" />
                 </div>
@@ -532,7 +538,7 @@ export function ChatView({
                   <img
                     src={msg.senderAvatar}
                     alt={msg.senderName}
-                    className="w-8 h-8 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-800 flex-shrink-0"
+                    className="w-8 h-8 rounded-full object-cover border border-zinc-300 dark:border-zinc-800 flex-shrink-0"
                   />
 
                   <div className={`max-w-[75%] ${msg.isMe ? 'items-end' : 'items-start'} flex flex-col`}>
@@ -666,53 +672,69 @@ export function ChatView({
 
             <div className="flex items-center gap-2 mb-2">
               <Sparkles className="w-4 h-4 text-zinc-950 dark:text-white" />
-              <h3 className="text-base font-bold text-zinc-950 dark:text-white uppercase">New Unfiltered Link</h3>
+              <h3 className="text-base font-bold text-zinc-950 dark:text-white uppercase">Direct Message Link</h3>
             </div>
             <p className="text-xs text-zinc-500 dark:text-zinc-400 mb-4">
-              Chat with anyone you follow or enter any handle to start a direct, censorship-free messaging node.
+              Send private, unfiltered transmissions to anyone in your following network.
             </p>
 
             {/* People You Follow Section */}
-            {following.length > 0 && (
-              <div className="mb-5 pb-4 border-b border-zinc-200 dark:border-zinc-800">
-                <div className="flex items-center justify-between mb-2.5">
+            {following.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 text-center mb-4">
+                <Users className="w-6 h-6 mx-auto mb-2 text-zinc-400 dark:text-zinc-500" />
+                <p className="text-xs font-bold text-zinc-950 dark:text-white mb-1">
+                  You aren't following anyone yet
+                </p>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-relaxed">
+                  To protect network integrity, you can only direct message peers you follow. Explore the feed to connect with creators!
+                </p>
+              </div>
+            ) : (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-2">
                   <span className="text-[11px] font-mono uppercase font-bold text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5" /> People You Follow ({following.length})
+                    <Users className="w-3.5 h-3.5" /> Peers You Follow ({following.length})
                   </span>
                 </div>
 
-                <div className="space-y-1.5 max-h-44 overflow-y-auto no-scrollbar">
-                  {following.map((followedUser) => (
-                    <div
-                      key={followedUser.id || followedUser.username}
-                      className="p-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 hover:border-zinc-400 dark:hover:border-zinc-600 transition-all"
-                    >
-                      <div className="flex items-center gap-2.5 min-w-0">
-                        <img
-                          src={followedUser.avatar}
-                          alt={followedUser.username}
-                          className="w-8 h-8 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700 flex-shrink-0"
-                        />
-                        <div className="min-w-0">
-                          <span className="text-xs font-bold text-zinc-950 dark:text-white block truncate">
-                            {followedUser.displayName}
-                          </span>
-                          <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 block truncate">
-                            @{followedUser.username}
-                          </span>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => handleStartChatWithFollowedUser(followedUser)}
-                        className="px-3 py-1.5 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black font-mono font-bold text-[11px] flex items-center gap-1 hover:opacity-90 transition-all cursor-pointer shadow-xs"
+                <div className="space-y-1.5 max-h-48 overflow-y-auto no-scrollbar mb-3">
+                  {following
+                    .filter((f) => 
+                      !newChatHandle.trim() || 
+                      f.username.toLowerCase().includes(newChatHandle.toLowerCase().replace(/^@/, '')) ||
+                      f.displayName.toLowerCase().includes(newChatHandle.toLowerCase())
+                    )
+                    .map((followedUser) => (
+                      <div
+                        key={followedUser.id || followedUser.username}
+                        className="p-2.5 rounded-2xl bg-zinc-50 dark:bg-zinc-900/70 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 hover:border-zinc-400 dark:hover:border-zinc-600 transition-all"
                       >
-                        <MessageSquare className="w-3 h-3" />
-                        <span>Chat</span>
-                      </button>
-                    </div>
-                  ))}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={followedUser.avatar}
+                            alt={followedUser.username}
+                            className="w-8 h-8 rounded-full object-cover border border-zinc-300 dark:border-zinc-700 flex-shrink-0"
+                          />
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-zinc-950 dark:text-white block truncate">
+                              {followedUser.displayName}
+                            </span>
+                            <span className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 block truncate">
+                              @{followedUser.username}
+                            </span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleStartChatWithFollowedUser(followedUser)}
+                          className="px-3 py-1.5 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black font-mono font-bold text-[11px] flex items-center gap-1 hover:opacity-90 transition-all cursor-pointer shadow-xs"
+                        >
+                          <MessageSquare className="w-3 h-3" />
+                          <span>Chat</span>
+                        </button>
+                      </div>
+                    ))}
                 </div>
               </div>
             )}
@@ -720,7 +742,9 @@ export function ChatView({
             <form onSubmit={handleStartNewChat} className="space-y-3">
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 uppercase">Or Enter Handle (1-18 chars)</label>
+                  <label className="text-[10px] font-mono text-zinc-500 dark:text-zinc-400 uppercase">
+                    Filter or Enter Followed Handle
+                  </label>
                   <span className="text-[10px] font-mono text-zinc-400 dark:text-zinc-500">{newChatHandle.length}/18</span>
                 </div>
                 <div className="relative">
@@ -730,19 +754,21 @@ export function ChatView({
                     maxLength={18}
                     value={newChatHandle}
                     onChange={(e) => setNewChatHandle(e.target.value.replace(/[^a-zA-Z0-9_]/g, ''))}
-                    placeholder="sora_k"
+                    placeholder="Search followed handle..."
                     className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 pl-8 pr-3 py-2.5 rounded-xl text-xs font-mono text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white"
                   />
                 </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={newChatHandle.trim().length === 0}
-                className="w-full py-3.5 bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold rounded-2xl hover:opacity-90 text-xs uppercase tracking-wider disabled:opacity-40 cursor-pointer shadow-md"
-              >
-                Establish Unfiltered Channel
-              </button>
+              {following.length > 0 && (
+                <button
+                  type="submit"
+                  disabled={newChatHandle.trim().length === 0}
+                  className="w-full py-3.5 bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold rounded-2xl hover:opacity-90 text-xs uppercase tracking-wider disabled:opacity-40 cursor-pointer shadow-md"
+                >
+                  Start Direct Message Channel
+                </button>
+              )}
             </form>
           </motion.div>
         </div>

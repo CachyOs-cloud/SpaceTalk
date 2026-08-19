@@ -215,6 +215,18 @@ export function AuthSection({
     if (checkSuspiciousPayload(username, email, password)) return;
     if (!validateUsername(username)) return;
 
+    if (!email.trim() || !email.includes('@')) {
+      setAuthError('Please enter a valid Gmail / email address');
+      playSound('pop');
+      return;
+    }
+
+    if (!password || password.trim().length < 6) {
+      setAuthError('Master password is required and must be at least 6 characters.');
+      playSound('pop');
+      return;
+    }
+
     setAuthError(null);
     setSuspiciousWarning(null);
     setIsLoading(true);
@@ -227,18 +239,9 @@ export function AuthSection({
       playSound('chime');
       setUser(profile);
       setStatus('active');
-    } catch {
+    } catch (err: any) {
       playSound('pop');
-      // Create local sovereign node without exposing browser errors
-      const profile = buildUserProfile(
-        `usr_${Date.now()}`,
-        username.trim(),
-        email.trim(),
-        username.trim(),
-        selectedAvatar
-      );
-      setUser(profile);
-      setStatus('active');
+      setAuthError(err?.message || 'Registration failed. Please verify your credentials or choose a different handle.');
     } finally {
       setIsLoading(false);
     }
@@ -251,6 +254,13 @@ export function AuthSection({
     const handle = loginIdentifier.trim().replace(/^@/, '');
     if (!handle) {
       setAuthError('Please enter your username or email');
+      playSound('pop');
+      return;
+    }
+
+    if (!password || password.trim().length < 6) {
+      setAuthError('Please enter your master password (minimum 6 characters).');
+      playSound('pop');
       return;
     }
 
@@ -271,7 +281,7 @@ export function AuthSection({
       if (newFails >= 3) {
         setSuspiciousWarning('⚠️ Suspicious Activity Detected: Multiple failed authentication attempts on this handle. Security alert logged.');
       } else {
-        setAuthError('User is not available.');
+        setAuthError(err?.message || 'User is not available.');
       }
     } finally {
       setIsLoading(false);
@@ -407,7 +417,7 @@ export function AuthSection({
                     <img
                       src={selectedAvatar}
                       alt="Avatar"
-                      className="w-full h-full object-cover grayscale"
+                      className="w-full h-full object-cover"
                     />
                   </div>
                 </div>
@@ -545,7 +555,7 @@ export function AuthSection({
               <button
                 id="btn-submit-create"
                 type="submit"
-                disabled={isLoading || username.length < 1 || username.length > 18}
+                disabled={isLoading || username.length < 1 || username.length > 18 || !email.trim() || !email.includes('@') || password.length < 6}
                 className="w-full py-4 bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold rounded-2xl hover:opacity-90 active:scale-[0.98] transition-all text-xs uppercase tracking-wider shadow-md dark:shadow-[0_0_20px_rgba(255,255,255,0.3)] mt-2 flex items-center justify-center gap-2 disabled:opacity-40 cursor-pointer"
               >
                 {isLoading ? (
@@ -613,8 +623,8 @@ export function AuthSection({
               <button
                 id="btn-submit-login"
                 type="submit"
-                disabled={isLoading}
-                className="w-full py-4 bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold rounded-2xl hover:opacity-90 active:scale-[0.98] transition-all text-xs uppercase tracking-wider shadow-md dark:shadow-[0_0_20px_rgba(255,255,255,0.3)] mt-2 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                disabled={isLoading || !loginIdentifier.trim() || password.length < 6}
+                className="w-full py-4 bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold rounded-2xl hover:opacity-90 active:scale-[0.98] transition-all text-xs uppercase tracking-wider shadow-md dark:shadow-[0_0_20px_rgba(255,255,255,0.3)] mt-2 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40"
               >
                 {isLoading ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -683,7 +693,7 @@ export function AuthSection({
                   <img
                     src={DEFAULT_AVATAR_PLACEHOLDER}
                     alt="Avatar"
-                    className="w-10 h-10 rounded-full object-cover grayscale border-2 border-amber-500/50 bg-zinc-100 dark:bg-zinc-800"
+                    className="w-10 h-10 rounded-full object-cover border-2 border-amber-500/50 bg-zinc-100 dark:bg-zinc-800"
                   />
                   <Crown className="w-3.5 h-3.5 text-amber-500 fill-amber-400 absolute -top-1 -right-1 drop-shadow-md" />
                 </div>

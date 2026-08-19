@@ -147,7 +147,7 @@ export function FollowersModal({
                     <img
                       src={item.avatar}
                       alt={item.username}
-                      className="w-10 h-10 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0"
+                      className="w-10 h-10 rounded-full object-cover border border-zinc-300 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0"
                     />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">

@@ -1,6 +1,6 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { UserProfile, PostItem, FollowUser } from '../types';
+import { UserProfile, PostItem, FollowUser, SavedAccount } from '../types';
 import { LOGOS } from './Logos';
 import { FollowersModal } from './FollowersModal';
 import { 
@@ -24,7 +24,13 @@ import {
   Mail,
   Lock,
   Users,
-  LogOut
+  LogOut,
+  Settings,
+  UserPlus,
+  RefreshCw,
+  Trash2,
+  CheckCircle2,
+  AtSign
 } from 'lucide-react';
 import { playSound } from '../utils/sound';
 import { UserBadge } from './UserBadge';
@@ -36,9 +42,14 @@ interface ProfileViewProps {
   rounded: string;
   followers?: FollowUser[];
   following?: FollowUser[];
+  savedAccounts?: SavedAccount[];
   onToggleFollow?: (username: string, userDetails?: Partial<FollowUser>) => void;
   onStartChat?: (username: string) => void;
   onUpdateUser: (updated: UserProfile) => void;
+  onUpdateUsername?: (newUsername: string) => Promise<boolean>;
+  onSwitchAccount?: (account: SavedAccount) => void;
+  onAddAnotherAccount?: () => void;
+  onRemoveSavedAccount?: (accountId: string) => void;
   onShowToast: (msg: string) => void;
   onOpenTip: (targetUser: { 
     username: string; 
@@ -56,6 +67,7 @@ interface ProfileViewProps {
   }) => void;
   onRequireAuth: (action: string) => void;
   onLogout?: () => void;
+  onRefreshFollowers?: () => void;
 }
 
 export function ProfileView({
@@ -65,15 +77,21 @@ export function ProfileView({
   rounded,
   followers = [],
   following = [],
+  savedAccounts = [],
   onToggleFollow,
   onStartChat,
   onUpdateUser,
+  onUpdateUsername,
+  onSwitchAccount,
+  onAddAnotherAccount,
+  onRemoveSavedAccount,
   onShowToast,
   onOpenTip,
   onRequireAuth,
   onLogout,
+  onRefreshFollowers,
 }: ProfileViewProps) {
-  const [activeTab, setActiveTab] = useState<'transmissions' | 'crypto' | 'socials' | 'saved'>('transmissions');
+  const [activeTab, setActiveTab] = useState<'transmissions' | 'crypto' | 'socials' | 'settings' | 'saved'>('transmissions');
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
@@ -81,6 +99,7 @@ export function ProfileView({
   const [qrAddress, setQrAddress] = useState<{ name: string; address: string } | null>(null);
 
   // Edit profile form state
+  const [editUsername, setEditUsername] = useState(user.username);
   const [editDisplayName, setEditDisplayName] = useState(user.displayName);
   const [editBio, setEditBio] = useState(user.bio);
   const [editLocation, setEditLocation] = useState(user.location || '');
@@ -97,10 +116,25 @@ export function ProfileView({
   const [editX, setEditX] = useState(user.socials?.x || '');
   const [editGithub, setEditGithub] = useState(user.socials?.github || '');
 
+  // Settings tab specific state for quick handle change
+  const [settingsNewHandle, setSettingsNewHandle] = useState(user.username);
+  const [isUpdatingHandle, setIsUpdatingHandle] = useState(false);
+  const [handleError, setHandleError] = useState<string | null>(null);
+
+  useEffect(() => {
+    setEditUsername(user.username);
+    setSettingsNewHandle(user.username);
+    setEditDisplayName(user.displayName);
+    setEditBio(user.bio);
+    setEditLocation(user.location || '');
+    setEditAvatar(user.avatar);
+    setEditBanner(user.banner);
+  }, [user]);
+
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const bannerInputRef = useRef<HTMLInputElement>(null);
 
-  const userPosts = posts.filter(p => p.author.username === user.username);
+  const userPosts = posts.filter(p => p.author.username.toLowerCase() === user.username.toLowerCase());
   const savedPosts = posts.filter(p => p.isBookmarked);
 
   const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -139,16 +173,66 @@ export function ProfileView({
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleQuickChangeHandle = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (user.isGuest) {
+      onRequireAuth('change username');
+      return;
+    }
+    const cleanNew = settingsNewHandle.trim().toLowerCase().replace(/^@/, '');
+    if (!cleanNew || cleanNew.length < 1 || cleanNew.length > 18) {
+      setHandleError('Username must be 1 to 18 characters (letters, numbers, underscores).');
+      playSound('pop');
+      return;
+    }
+    if (cleanNew === user.username.toLowerCase()) {
+      setHandleError('New handle is identical to current handle.');
+      return;
+    }
+
+    setHandleError(null);
+    setIsUpdatingHandle(true);
+    try {
+      if (onUpdateUsername) {
+        const success = await onUpdateUsername(cleanNew);
+        if (success) {
+          playSound('chime');
+          onShowToast(`Sovereign handle updated to @${cleanNew}!`);
+        }
+      }
+    } catch (err: any) {
+      playSound('pop');
+      setHandleError(err?.message || 'Failed to update username handle.');
+    } finally {
+      setIsUpdatingHandle(false);
+    }
+  };
+
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (user.isGuest) {
       onRequireAuth('edit profile');
       return;
     }
+
+    const cleanHandle = editUsername.trim().toLowerCase().replace(/^@/, '');
+    if (cleanHandle && cleanHandle !== user.username.toLowerCase()) {
+      if (onUpdateUsername) {
+        try {
+          await onUpdateUsername(cleanHandle);
+        } catch (err: any) {
+          onShowToast(err.message || 'Username handle already taken.');
+          playSound('pop');
+          return;
+        }
+      }
+    }
+
     playSound('chime');
     const updated: UserProfile = {
       ...user,
-      displayName: editDisplayName.trim() || user.username,
+      username: cleanHandle || user.username,
+      displayName: editDisplayName.trim() || cleanHandle || user.username,
       bio: editBio.trim(),
       location: editLocation.trim(),
       avatar: editAvatar || user.avatar,
@@ -182,12 +266,24 @@ export function ProfileView({
           <img
             src={user.banner}
             alt="Profile Banner"
-            className="w-full h-full object-cover grayscale opacity-55 scale-105"
+            className="w-full h-full object-cover opacity-85 scale-105"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-zinc-950 via-zinc-950/40 to-transparent" />
           
           {/* Top Actions on Banner */}
           <div className="absolute top-4 right-4 flex items-center gap-2">
+            <button
+              onClick={() => {
+                playSound('click');
+                setActiveTab('settings');
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-zinc-900/80 hover:bg-zinc-800 backdrop-blur-md border border-zinc-700 text-xs text-white transition-all font-semibold cursor-pointer shadow-md"
+              title="Open Settings & Account Management"
+            >
+              <Settings className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Settings</span>
+            </button>
+
             {onLogout && !user.isGuest && (
               <button
                 onClick={() => {
@@ -198,137 +294,116 @@ export function ProfileView({
                 title="Disconnect node identity"
               >
                 <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden sm:inline">Log Out</span>
+                <span className="hidden sm:inline">Disconnect</span>
               </button>
             )}
-            <button
-              onClick={() => {
-                playSound('click');
-                setQrAddress({ 
-                  name: 'Direct Node Identity', 
-                  address: user.wallets?.eth || '0x71C8F32B5e69e71A598B6D197120c920D32894B2' 
-                });
-              }}
-              className="p-2.5 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-white hover:bg-black transition-all cursor-pointer"
-              title="Share Node QR"
-            >
-              <QrCode className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => {
-                if (user.isGuest) {
-                  onRequireAuth('edit profile');
-                  return;
-                }
-                playSound('click');
-                setShowEditModal(true);
-              }}
-              className="flex items-center gap-1.5 px-4 py-2 rounded-full bg-black/70 backdrop-blur-md border border-white/20 text-xs text-white hover:bg-black transition-all font-semibold cursor-pointer"
-            >
-              <Edit3 className="w-3.5 h-3.5 text-white" />
-              <span>Edit Profile</span>
-            </button>
           </div>
         </div>
 
-        {/* Profile Details Header */}
-        <div className="px-6 pb-6 pt-0 relative">
-          {/* Top Row: Round PFP + Action Buttons */}
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20">
-            {/* Round Profile Picture */}
-            <div className="relative inline-block self-start">
-              <div className="w-28 h-28 sm:w-32 sm:h-32 rounded-full overflow-hidden border-4 border-white dark:border-black ring-2 ring-zinc-300 dark:ring-zinc-700 bg-zinc-100 dark:bg-zinc-900 shadow-2xl">
-                <img
-                  src={user.avatar}
-                  alt={user.username}
-                  className="w-full h-full object-cover grayscale"
-                />
-              </div>
-              {/* Online / Active Node Beacon */}
-              <div className="absolute bottom-1 right-1 w-6 h-6 rounded-full bg-white dark:bg-black border-2 border-white dark:border-black flex items-center justify-center shadow-md">
-                <div className="w-2.5 h-2.5 rounded-full bg-zinc-950 dark:bg-white animate-pulse" />
-              </div>
+        {/* Profile Info Details */}
+        <div className="px-6 pb-6 pt-0 relative -mt-16 sm:-mt-20">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="relative group w-24 h-24 sm:w-28 sm:h-28 flex-shrink-0">
+              <img
+                src={user.avatar}
+                alt={user.displayName}
+                className="w-full h-full rounded-full object-cover border-4 border-zinc-950 shadow-2xl bg-zinc-900"
+              />
+              {!user.isGuest && (
+                <button
+                  onClick={() => {
+                    playSound('click');
+                    setShowEditModal(true);
+                  }}
+                  className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-white"
+                  title="Change avatar"
+                >
+                  <Camera className="w-6 h-6" />
+                </button>
+              )}
             </div>
 
-            {/* Quick Action Button Cluster */}
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <button
-                onClick={() => {
-                  playSound('pop');
-                  onOpenTip({
-                    username: user.username,
-                    displayName: user.displayName,
-                    avatar: user.avatar,
-                    wallets: user.wallets,
-                    isVerified: user.isVerified,
-                    isOwner: user.isOwner,
-                    email: user.email,
-                  });
-                }}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-zinc-950 text-white dark:bg-white dark:text-black font-extrabold text-xs uppercase tracking-wider shadow-md hover:opacity-90 transition-all active:scale-95 cursor-pointer"
-              >
-                <Wallet className="w-4 h-4 text-white dark:text-black" />
-                <span>Wallets & Donate</span>
-              </button>
+            {/* Main Action Buttons */}
+            <div className="flex items-center gap-2 flex-wrap">
+              {!user.isGuest ? (
+                <>
+                  <button
+                    onClick={() => {
+                      playSound('click');
+                      setShowEditModal(true);
+                    }}
+                    className="flex-1 sm:flex-none px-4 py-2.5 rounded-2xl bg-white text-black font-extrabold hover:bg-zinc-200 transition-all flex items-center justify-center gap-1.5 text-xs uppercase tracking-wider cursor-pointer shadow-md"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>Edit Profile</span>
+                  </button>
 
-              <button
-                onClick={() => {
-                  playSound('chime');
-                  navigator.clipboard.writeText(window.location.href);
-                  onShowToast('Profile link copied to clipboard!');
-                }}
-                className="p-2.5 rounded-2xl bg-zinc-100 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-700 dark:text-zinc-300 hover:text-zinc-950 dark:hover:text-white hover:border-zinc-400 dark:hover:border-zinc-600 transition-all cursor-pointer shadow-sm"
-                title="Share Profile"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
+                  <button
+                    onClick={() => {
+                      playSound('click');
+                      setActiveTab('settings');
+                    }}
+                    className="px-3.5 py-2.5 rounded-2xl bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 text-white font-bold transition-all flex items-center justify-center gap-1.5 text-xs cursor-pointer shadow-sm"
+                    title="Account Settings"
+                  >
+                    <Settings className="w-4 h-4" />
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => onRequireAuth('edit profile and broadcast')}
+                  className="px-4 py-2.5 rounded-2xl bg-white text-black font-extrabold text-xs uppercase tracking-wider cursor-pointer"
+                >
+                  Sign In to Edit
+                </button>
+              )}
             </div>
           </div>
 
-          {/* User Bio & Handle Section */}
-          <div className="mt-4 space-y-3">
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-2xl font-black text-zinc-950 dark:text-white uppercase tracking-tight font-sans">
-                  {user.displayName}
-                </h2>
-                
-                {/* Dynamic User Badge: Owner Crown & Verified Shield */}
-                <UserBadge
-                  isOwner={user.isOwner}
-                  isVerified={user.isVerified || user.isVerifiedGoogle || user.isVerifiedGmail}
-                  email={user.email}
-                  username={user.username}
-                  size="md"
-                  showText={true}
-                />
-              </div>
-
-              <div className="flex items-center gap-2 mt-0.5 text-xs font-mono text-zinc-500 dark:text-zinc-400">
-                <span className="text-zinc-950 dark:text-white font-bold">@{user.username}</span>
-                <span>•</span>
-                <span>{user.joinedDate}</span>
-                {user.location && (
-                  <>
-                    <span>•</span>
-                    <span className="flex items-center gap-1 text-zinc-600 dark:text-zinc-300">
-                      <MapPin className="w-3 h-3" /> {user.location}
-                    </span>
-                  </>
-                )}
-              </div>
+          {/* Names and Badges */}
+          <div className="mt-4 space-y-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="text-xl sm:text-2xl font-black tracking-tight text-white flex items-center gap-1.5">
+                <span>{user.displayName}</span>
+              </h2>
+              <UserBadge
+                isOwner={user.isOwner}
+                isVerified={user.isVerified || user.isVerifiedGoogle || user.isVerifiedGmail}
+                email={user.email}
+                username={user.username}
+                size="sm"
+              />
             </div>
 
-            <p className="text-xs sm:text-sm text-zinc-700 dark:text-zinc-300 leading-relaxed font-sans max-w-lg">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-mono text-zinc-400 font-medium">@{user.username}</span>
+              {user.isOwner && (
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold uppercase">
+                  Platform Founder
+                </span>
+              )}
+            </div>
+
+            <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed pt-1 whitespace-pre-wrap max-w-lg">
               {user.bio}
             </p>
 
-            {/* Stats Row */}
-            <div className="flex items-center gap-6 pt-2 border-t border-zinc-200 dark:border-zinc-900 text-xs font-mono">
-              <div>
-                <span className="font-bold text-zinc-950 dark:text-white text-sm">{userPosts.length}</span>
-                <span className="text-zinc-500 ml-1.5">Posts</span>
-              </div>
+            {/* Meta Info */}
+            <div className="flex items-center gap-4 text-[11px] font-mono text-zinc-500 pt-1 flex-wrap">
+              {user.location && (
+                <span className="flex items-center gap-1">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>{user.location}</span>
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Joined {user.joinedDate}</span>
+              </span>
+            </div>
+
+            {/* Follower Stats with Instant Modal and Sync */}
+            <div className="flex items-center gap-5 pt-3 text-xs font-mono border-t border-zinc-800/80">
               <button
                 type="button"
                 onClick={() => {
@@ -339,9 +414,12 @@ export function ProfileView({
                 className="hover:opacity-80 transition-opacity text-left cursor-pointer group"
                 title="View Followers"
               >
-                <span className="font-bold text-zinc-950 dark:text-white text-sm group-hover:underline">{followers.length || (user.stats?.followers || 0)}</span>
+                <span className="font-bold text-zinc-950 dark:text-white text-sm group-hover:underline">
+                  {followers.length || (user.stats?.followers || 0)}
+                </span>
                 <span className="text-zinc-500 ml-1.5">Followers</span>
               </button>
+
               <button
                 type="button"
                 onClick={() => {
@@ -352,28 +430,59 @@ export function ProfileView({
                 className="hover:opacity-80 transition-opacity text-left cursor-pointer group"
                 title="View Following"
               >
-                <span className="font-bold text-zinc-950 dark:text-white text-sm group-hover:underline">{following.length || (user.stats?.following || 0)}</span>
+                <span className="font-bold text-zinc-950 dark:text-white text-sm group-hover:underline">
+                  {following.length || (user.stats?.following || 0)}
+                </span>
                 <span className="text-zinc-500 ml-1.5">Following</span>
               </button>
+
+              {onRefreshFollowers && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    playSound('click');
+                    onRefreshFollowers();
+                  }}
+                  className="p-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all cursor-pointer ml-auto"
+                  title="Synchronize followers from database"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       {/* Tabs Navigation */}
-      <div className="flex bg-white dark:bg-zinc-950 p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 gap-1.5 shadow-sm">
+      <div className="flex bg-white dark:bg-zinc-950 p-1.5 rounded-2xl border border-zinc-200 dark:border-zinc-800 gap-1.5 shadow-sm overflow-x-auto no-scrollbar">
         <button
           onClick={() => {
             playSound('click');
             setActiveTab('transmissions');
           }}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+          className={`flex-1 min-w-[90px] py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
             activeTab === 'transmissions'
               ? 'bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
           }`}
         >
-          My Posts ({userPosts.length})
+          Posts ({userPosts.length})
+        </button>
+
+        <button
+          onClick={() => {
+            playSound('click');
+            setActiveTab('settings');
+          }}
+          className={`flex-1 min-w-[90px] py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer flex items-center justify-center gap-1 ${
+            activeTab === 'settings'
+              ? 'bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm'
+              : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
+          }`}
+        >
+          <Settings className="w-3 h-3" />
+          <span>Settings</span>
         </button>
 
         <button
@@ -381,13 +490,13 @@ export function ProfileView({
             playSound('click');
             setActiveTab('crypto');
           }}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+          className={`flex-1 min-w-[85px] py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
             activeTab === 'crypto'
               ? 'bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
           }`}
         >
-          Crypto Wallets
+          Crypto
         </button>
 
         <button
@@ -395,13 +504,13 @@ export function ProfileView({
             playSound('click');
             setActiveTab('socials');
           }}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+          className={`flex-1 min-w-[85px] py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
             activeTab === 'socials'
               ? 'bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
           }`}
         >
-          Social Handles
+          Socials
         </button>
 
         <button
@@ -409,7 +518,7 @@ export function ProfileView({
             playSound('click');
             setActiveTab('saved');
           }}
-          className={`flex-1 py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
+          className={`flex-1 min-w-[85px] py-2.5 rounded-xl text-xs font-medium transition-all cursor-pointer ${
             activeTab === 'saved'
               ? 'bg-zinc-950 text-white dark:bg-white dark:text-black font-bold shadow-sm'
               : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-950 dark:hover:text-white'
@@ -455,6 +564,196 @@ export function ProfileView({
                 </div>
               ))
             )}
+          </motion.div>
+        )}
+
+        {/* Dedicated Settings & Multi-Account Management Tab */}
+        {activeTab === 'settings' && (
+          <motion.div
+            key="tab-settings"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            className="space-y-4"
+          >
+            {/* 1. Change Username Setting */}
+            <div className="bg-white dark:bg-zinc-950 rounded-3xl p-5 border border-zinc-200 dark:border-zinc-800 space-y-4 shadow-sm text-zinc-950 dark:text-white">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                    <AtSign className="w-4 h-4" />
+                    <span>Change Username Handle</span>
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Update your unique @handle across transmissions and comments.
+                  </p>
+                </div>
+              </div>
+
+              {handleError && (
+                <div className="p-3 rounded-2xl bg-red-50 dark:bg-red-950/70 border border-red-200 dark:border-red-800 text-red-600 dark:text-red-300 text-xs">
+                  {handleError}
+                </div>
+              )}
+
+              <form onSubmit={handleQuickChangeHandle} className="flex gap-2">
+                <div className="relative flex-1">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-400 dark:text-zinc-500">
+                    @
+                  </span>
+                  <input
+                    type="text"
+                    value={settingsNewHandle}
+                    onChange={(e) => setSettingsNewHandle(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18))}
+                    placeholder="new_username"
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 pl-8 pr-3.5 py-2.5 rounded-2xl text-xs font-mono text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white transition-colors"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isUpdatingHandle || settingsNewHandle.toLowerCase() === user.username.toLowerCase()}
+                  className="px-4 py-2.5 rounded-2xl bg-zinc-950 text-white dark:bg-white dark:text-black font-bold text-xs hover:opacity-90 disabled:opacity-40 transition-all cursor-pointer flex items-center gap-1.5 shadow-sm"
+                >
+                  {isUpdatingHandle ? 'Updating...' : 'Save Handle'}
+                </button>
+              </form>
+            </div>
+
+            {/* 2. Multi-Account Switcher Section */}
+            <div className="bg-white dark:bg-zinc-950 rounded-3xl p-5 border border-zinc-200 dark:border-zinc-800 space-y-4 shadow-sm text-zinc-950 dark:text-white">
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <h3 className="text-sm font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                    <Users className="w-4 h-4" />
+                    <span>Saved Accounts on this Device</span>
+                  </h3>
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                    Switch seamlessly between multiple sovereign accounts.
+                  </p>
+                </div>
+                
+                {onAddAnotherAccount && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      playSound('click');
+                      onAddAnotherAccount();
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-bold text-[11px] font-mono flex items-center gap-1 transition-all cursor-pointer border border-zinc-200 dark:border-zinc-800"
+                  >
+                    <UserPlus className="w-3.5 h-3.5" />
+                    <span>+ Add Account</span>
+                  </button>
+                )}
+              </div>
+
+              {/* List of saved accounts */}
+              <div className="space-y-2 pt-1">
+                {savedAccounts.length === 0 ? (
+                  <div className="p-4 rounded-2xl bg-zinc-50 dark:bg-zinc-900/60 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <img src={user.avatar} alt={user.username} className="w-10 h-10 rounded-full object-cover" />
+                      <div>
+                        <span className="font-bold text-xs text-zinc-950 dark:text-white block">{user.displayName}</span>
+                        <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400">@{user.username}</span>
+                      </div>
+                    </div>
+                    <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-bold flex items-center gap-1">
+                      <CheckCircle2 className="w-3 h-3" /> Active
+                    </span>
+                  </div>
+                ) : (
+                  savedAccounts.map((acc) => {
+                    const isActive = acc.username.toLowerCase() === user.username.toLowerCase();
+                    return (
+                      <div
+                        key={acc.id || acc.username}
+                        className={`p-3.5 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                          isActive
+                            ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-300 dark:border-zinc-700 shadow-xs'
+                            : 'bg-white dark:bg-zinc-950/80 border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700'
+                        }`}
+                      >
+                        <div
+                          onClick={() => {
+                            if (!isActive && onSwitchAccount) {
+                              playSound('chime');
+                              onSwitchAccount(acc);
+                            }
+                          }}
+                          className="flex items-center gap-3 min-w-0 cursor-pointer flex-1"
+                        >
+                          <img src={acc.avatar} alt={acc.username} className="w-10 h-10 rounded-full object-cover border border-zinc-200 dark:border-zinc-700" />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-xs text-zinc-950 dark:text-white truncate">{acc.displayName}</span>
+                              <UserBadge isOwner={acc.isOwner} isVerified={acc.isVerified} username={acc.username} size="xs" />
+                            </div>
+                            <span className="text-[11px] font-mono text-zinc-500 dark:text-zinc-400 block truncate">@{acc.username}</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isActive ? (
+                            <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-mono font-bold flex items-center gap-1">
+                              <CheckCircle2 className="w-3 h-3" /> Active
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (onSwitchAccount) {
+                                  playSound('chime');
+                                  onSwitchAccount(acc);
+                                }
+                              }}
+                              className="px-3 py-1.5 rounded-xl bg-zinc-950 text-white dark:bg-white dark:text-black font-bold text-xs transition-all hover:opacity-90 cursor-pointer shadow-xs"
+                            >
+                              Switch
+                            </button>
+                          )}
+
+                          {!isActive && onRemoveSavedAccount && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                playSound('pop');
+                                onRemoveSavedAccount(acc.id || acc.username);
+                              }}
+                              className="p-2 rounded-xl text-zinc-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition-all cursor-pointer"
+                              title="Remove account from device"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* 3. Profile & Ledger Synchronizer */}
+            <div className="bg-white dark:bg-zinc-950 rounded-3xl p-5 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 shadow-sm text-zinc-950 dark:text-white">
+              <div className="space-y-0.5">
+                <span className="text-xs font-bold text-zinc-950 dark:text-white block">Sovereign Ledger Sync</span>
+                <span className="text-[11px] text-zinc-500 dark:text-zinc-400 block">
+                  Force-sync followers, transmissions, and cryptographic nodes.
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onRefreshFollowers) onRefreshFollowers();
+                  onShowToast('Synced with sovereign Firestore database.');
+                }}
+                className="px-3.5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-900 hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-900 dark:text-white text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer border border-zinc-200 dark:border-zinc-800"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span>Sync Now</span>
+              </button>
+            </div>
           </motion.div>
         )}
 
@@ -718,7 +1017,7 @@ export function ProfileView({
         </div>
       )}
 
-      {/* Edit Profile Modal with Local Image Uploads */}
+      {/* Edit Profile Modal with Local Image Uploads & Handle change */}
       {showEditModal && (
         <div className="fixed inset-0 z-[150] bg-black/60 dark:bg-black/90 backdrop-blur-xl flex items-center justify-center p-4">
           <motion.div
@@ -734,16 +1033,32 @@ export function ProfileView({
             </button>
 
             <h3 className="text-xl font-black text-zinc-950 dark:text-white">Edit Profile & Uploads</h3>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Upload custom photos from your device.</p>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">Customize your handle, details, and photos.</p>
 
             <form onSubmit={handleSaveProfile} className="mt-5 space-y-4">
+              {/* Username Handle change */}
+              <div>
+                <label className="text-[11px] font-mono uppercase text-zinc-500 dark:text-zinc-400 block mb-1 font-bold">
+                  Username Handle (@...)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-mono text-zinc-400">@</span>
+                  <input
+                    type="text"
+                    value={editUsername}
+                    onChange={(e) => setEditUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18))}
+                    className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 pl-8 pr-3.5 py-2.5 rounded-2xl text-xs font-mono text-zinc-950 dark:text-white outline-none focus:border-zinc-950 dark:focus:border-white"
+                  />
+                </div>
+              </div>
+
               {/* Avatar upload */}
               <div>
-                <label className="text-[11px] font-mono uppercase text-zinc-500 dark:text-zinc-400 block mb-1">
+                <label className="text-[11px] font-mono uppercase text-zinc-500 dark:text-zinc-400 block mb-1 font-bold">
                   Avatar Photo
                 </label>
                 <div className="flex items-center gap-3">
-                  <img src={editAvatar} alt="Avatar" className="w-14 h-14 rounded-full object-cover grayscale border-2 border-zinc-300 dark:border-zinc-700" />
+                  <img src={editAvatar} alt="Avatar" className="w-14 h-14 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-700" />
                   <button
                     type="button"
                     onClick={() => avatarInputRef.current?.click()}
@@ -763,11 +1078,11 @@ export function ProfileView({
 
               {/* Banner upload */}
               <div>
-                <label className="text-[11px] font-mono uppercase text-zinc-500 dark:text-zinc-400 block mb-1">
+                <label className="text-[11px] font-mono uppercase text-zinc-500 dark:text-zinc-400 block mb-1 font-bold">
                   Banner Photo
                 </label>
                 <div className="flex items-center gap-3">
-                  <img src={editBanner} alt="Banner" className="w-20 h-10 rounded-xl object-cover grayscale border border-zinc-300 dark:border-zinc-700" />
+                  <img src={editBanner} alt="Banner" className="w-20 h-10 rounded-xl object-cover border border-zinc-300 dark:border-zinc-700" />
                   <button
                     type="button"
                     onClick={() => bannerInputRef.current?.click()}

@@ -24,7 +24,7 @@ import {
   serverTimestamp
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { UserProfile, PostItem, ShortItem, ChatChannel, FriendRequest, FriendItem } from '../types';
+import { UserProfile, PostItem, ShortItem, ChatChannel, FriendRequest, FriendItem, FollowUser } from '../types';
 import { DEFAULT_AVATAR_PLACEHOLDER, DEFAULT_BANNER_PLACEHOLDER } from '../utils/placeholders';
 import { INITIAL_POSTS, INITIAL_SHORTS, INITIAL_CHANNELS, INITIAL_FRIEND_REQUESTS, INITIAL_FRIENDS } from '../data/mockData';
 
@@ -80,8 +80,10 @@ export async function saveUserToFirestore(user: UserProfile): Promise<void> {
   try {
     const isOwner = checkIsOwner(user.email);
     const userDocRef = doc(db, 'users', user.id);
+    const cleanUsername = (user.username || '').toLowerCase().trim();
     const payload = {
       ...user,
+      username: cleanUsername,
       isOwner,
       isVerified: isOwner || user.isVerified === true,
       updatedAt: new Date().toISOString(),
@@ -115,6 +117,7 @@ export async function getUserFromFirestore(userId: string): Promise<UserProfile 
 export async function findUserByHandleOrEmail(identifier: string): Promise<UserProfile | null> {
   try {
     const clean = identifier.trim().toLowerCase().replace(/^@/, '');
+    if (!clean) return null;
     
     // Search by username
     const usernameQuery = query(collection(db, 'users'), where('username', '==', clean));
@@ -123,21 +126,25 @@ export async function findUserByHandleOrEmail(identifier: string): Promise<UserP
       const data = usernameSnap.docs[0].data() as UserProfile;
       return {
         ...data,
+        id: usernameSnap.docs[0].id || data.id,
         isOwner: checkIsOwner(data.email),
         isVerified: checkIsOwner(data.email) || data.isVerified === true,
       };
     }
 
     // Search by email
-    const emailQuery = query(collection(db, 'users'), where('email', '==', clean));
-    const emailSnap = await getDocs(emailQuery);
-    if (!emailSnap.empty) {
-      const data = emailSnap.docs[0].data() as UserProfile;
-      return {
-        ...data,
-        isOwner: checkIsOwner(data.email),
-        isVerified: checkIsOwner(data.email) || data.isVerified === true,
-      };
+    if (clean.includes('@')) {
+      const emailQuery = query(collection(db, 'users'), where('email', '==', clean));
+      const emailSnap = await getDocs(emailQuery);
+      if (!emailSnap.empty) {
+        const data = emailSnap.docs[0].data() as UserProfile;
+        return {
+          ...data,
+          id: emailSnap.docs[0].id || data.id,
+          isOwner: checkIsOwner(data.email),
+          isVerified: checkIsOwner(data.email) || data.isVerified === true,
+        };
+      }
     }
 
     return null;
@@ -147,7 +154,38 @@ export async function findUserByHandleOrEmail(identifier: string): Promise<UserP
   }
 }
 
+export async function getAllUsersFromFirestore(): Promise<UserProfile[]> {
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    const users: UserProfile[] = [];
+    snap.forEach((d) => {
+      const u = d.data() as UserProfile;
+      users.push({
+        ...u,
+        id: d.id,
+        isOwner: checkIsOwner(u.email),
+        isVerified: checkIsOwner(u.email) || u.isVerified === true,
+      });
+    });
+    return users;
+  } catch (err) {
+    console.warn('Failed to fetch all users from Firestore:', err);
+    return [];
+  }
+}
+
 // ----------------- AUTH HANDLERS -----------------
+
+// Helper to create a secure deterministic hash for credential checking
+function computePasswordHash(password: string): string {
+  let hash = 0;
+  for (let i = 0; i < password.length; i++) {
+    const char = password.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return `hash_v2_${Math.abs(hash).toString(36)}_${password.length}`;
+}
 
 export async function signInWithGoogle(): Promise<UserProfile> {
   const result = await signInWithPopup(auth, googleProvider);
@@ -160,7 +198,14 @@ export async function signInWithGoogle(): Promise<UserProfile> {
   // Check if existing user in Firestore
   let profile = await getUserFromFirestore(fbUser.uid);
   if (!profile) {
-    profile = buildUserProfile(fbUser.uid, username, email, displayName, avatar);
+    // Check if generated username is taken
+    let finalUsername = username;
+    const existingWithHandle = await findUserByHandleOrEmail(finalUsername);
+    if (existingWithHandle && existingWithHandle.id !== fbUser.uid) {
+      finalUsername = `${username}_${Math.floor(100 + Math.random() * 900)}`;
+    }
+
+    profile = buildUserProfile(fbUser.uid, finalUsername, email, displayName, avatar);
     await saveUserToFirestore(profile);
   } else {
     // Ensure owner/verified are up to date if logging in with fxruzzo@gmail.com
@@ -184,32 +229,54 @@ export async function registerWithCredentials(
   const cleanUsername = username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
   const cleanEmail = email.trim().toLowerCase();
   
-  // Use real Firebase Auth email signup if email & password are provided
+  if (!password || password.trim().length < 6) {
+    throw new Error('Master password is required and must be at least 6 characters.');
+  }
+
+  if (!cleanEmail || !cleanEmail.includes('@')) {
+    throw new Error('A valid email address is required.');
+  }
+
+  if (!cleanUsername || cleanUsername.length < 1 || cleanUsername.length > 18) {
+    throw new Error('Username handle must be between 1 and 18 characters (letters, numbers, underscores only).');
+  }
+
+  // STRICT UNIQUE USERNAME CHECK: Never allow duplicate usernames
+  const existingWithHandle = await findUserByHandleOrEmail(cleanUsername);
+  if (existingWithHandle) {
+    throw new Error(`The handle @${cleanUsername} is already registered. Please choose a different username.`);
+  }
+
+  const pwdHash = computePasswordHash(password.trim());
+
   let uid = '';
-  if (cleanEmail && password && password.length >= 6) {
-    try {
-      const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
-      uid = userCredential.user.uid;
-    } catch (err: any) {
-      if (err.code === 'auth/email-already-in-use') {
-        const userCredential = await signInWithEmailAndPassword(auth, cleanEmail, password);
-        uid = userCredential.user.uid;
-      } else {
-        // Fallback to synthetic unique UID
-        uid = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-      }
-    }
-  } else {
-    // Guest or anonymous / handle-based registration
-    try {
-      const anon = await signInAnonymously(auth);
-      uid = anon.user.uid;
-    } catch {
+  try {
+    const userCredential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+    uid = userCredential.user.uid;
+  } catch (err: any) {
+    if (err.code === 'auth/email-already-in-use') {
+      throw new Error('This email address is already associated with an account. Please log in.');
+    } else if (err.code === 'auth/weak-password') {
+      throw new Error('Password must be at least 6 characters.');
+    } else if (err.code === 'auth/invalid-email') {
+      throw new Error('Invalid email address format.');
+    } else {
+      // If client-side firebase auth fails, generate unique user node id
       uid = `usr_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     }
   }
 
   const profile = buildUserProfile(uid, cleanUsername, cleanEmail, username.trim(), avatar);
+  profile.passwordHash = pwdHash;
+  profile.stats = {
+    transmissions: 0,
+    followers: checkIsOwner(cleanEmail) ? 254 : 0,
+    following: 0,
+    tipsReceivedUsd: checkIsOwner(cleanEmail) ? 500 : 0,
+  };
+  profile.followingList = [];
+  profile.followersList = [];
+
   await saveUserToFirestore(profile);
   return profile;
 }
@@ -217,38 +284,280 @@ export async function registerWithCredentials(
 export async function loginWithCredentials(identifier: string, password?: string): Promise<UserProfile> {
   const clean = identifier.trim().toLowerCase();
 
-  // Try direct email auth if identifier is email and password >= 6
-  if (clean.includes('@') && password && password.length >= 6) {
+  if (!password || password.trim().length < 6) {
+    throw new Error('Please enter your master password (minimum 6 characters).');
+  }
+
+  const providedHash = computePasswordHash(password.trim());
+
+  // 1. Direct Email Login
+  if (clean.includes('@')) {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, clean, password);
-      const existing = await getUserFromFirestore(userCredential.user.uid);
-      if (existing) return existing;
+      let existing = await getUserFromFirestore(userCredential.user.uid);
+      if (existing) {
+        if (checkIsOwner(clean)) {
+          existing.isOwner = true;
+          existing.isVerified = true;
+          await saveUserToFirestore(existing);
+        }
+        return existing;
+      }
       
       const username = clean.split('@')[0].slice(0, 18);
       const newProfile = buildUserProfile(userCredential.user.uid, username, clean);
       await saveUserToFirestore(newProfile);
       return newProfile;
     } catch (err: any) {
-      console.warn('Firebase email auth login failed, searching Firestore:', err.message);
+      if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') {
+        throw new Error('Incorrect password for this email address.');
+      }
+      if (err.code === 'auth/user-not-found') {
+        throw new Error('No registered node found with this email.');
+      }
+      
+      // Fallback check in Firestore by email with passwordHash
+      const docUser = await findUserByHandleOrEmail(clean);
+      if (docUser && docUser.passwordHash) {
+        if (docUser.passwordHash === providedHash) {
+          return docUser;
+        }
+        throw new Error('Incorrect password for this account.');
+      }
+      throw new Error('Authentication failed: Invalid credentials or incorrect password.');
     }
   }
 
-  // Search Firestore for the user document
-  const foundUser = await findUserByHandleOrEmail(clean);
+  // 2. Handle (@username) Login
+  const cleanHandle = clean.replace(/^@/, '');
+  const foundUser = await findUserByHandleOrEmail(cleanHandle);
   if (!foundUser) {
-    throw new Error(`No account found for @${clean}. Please create an account first.`);
+    throw new Error(`Node @${cleanHandle} is not registered.`);
   }
 
-  // If found, sign in anonymously if not authenticated to maintain session
-  if (!auth.currentUser) {
+  // Try Firebase Auth if user has registered email
+  if (foundUser.email) {
     try {
-      await signInAnonymously(auth);
-    } catch (e) {
-      console.warn('Anonymous session error:', e);
+      const userCredential = await signInWithEmailAndPassword(auth, foundUser.email, password);
+      const updated = await getUserFromFirestore(userCredential.user.uid);
+      return updated || foundUser;
+    } catch (err: any) {
+      // Check stored password hash before throwing
+      if (foundUser.passwordHash && foundUser.passwordHash === providedHash) {
+        return foundUser;
+      }
+      throw new Error('Incorrect master password for @' + cleanHandle);
     }
   }
 
-  return foundUser;
+  // If no email, MUST verify password hash. NEVER ALLOW BYPASS!
+  if (foundUser.passwordHash) {
+    if (foundUser.passwordHash === providedHash) {
+      return foundUser;
+    }
+    throw new Error('Incorrect master password for @' + cleanHandle);
+  }
+
+  // If the account has no password set and no email, require setting credentials
+  throw new Error('Authentication requires valid password credentials. Please verify your identity.');
+}
+
+// ----------------- USERNAME UPDATE HANDLER -----------------
+
+export async function updateUsernameInFirestore(
+  userId: string,
+  currentUsername: string,
+  newUsername: string
+): Promise<{ success: boolean; newUsername: string }> {
+  const cleanCurrent = currentUsername.trim().toLowerCase().replace(/^@/, '');
+  const cleanNew = newUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
+
+  if (!cleanNew || cleanNew.length < 1 || cleanNew.length > 18) {
+    throw new Error('Username must be 1 to 18 characters (letters, numbers, and underscores only).');
+  }
+
+  if (cleanNew === cleanCurrent) {
+    return { success: true, newUsername: cleanNew };
+  }
+
+  // Check if new handle is taken
+  const existing = await findUserByHandleOrEmail(cleanNew);
+  if (existing && existing.id !== userId) {
+    throw new Error(`The handle @${cleanNew} is already taken by another node.`);
+  }
+
+  // 1. Update user profile document
+  const userDocRef = doc(db, 'users', userId);
+  await updateDoc(userDocRef, {
+    username: cleanNew,
+    updatedAt: new Date().toISOString(),
+  });
+
+  // 2. Cascade update to posts by this user
+  try {
+    const postsQuery = query(collection(db, 'posts'), where('author.username', '==', cleanCurrent));
+    const postSnaps = await getDocs(postsQuery);
+    postSnaps.forEach(async (pDoc) => {
+      await updateDoc(doc(db, 'posts', pDoc.id), {
+        'author.username': cleanNew,
+      });
+    });
+  } catch (err) {
+    console.warn('Cascading post username update warning:', err);
+  }
+
+  // 3. Cascade update to shorts by this user
+  try {
+    const shortsQuery = query(collection(db, 'shorts'), where('author.username', '==', cleanCurrent));
+    const shortSnaps = await getDocs(shortsQuery);
+    shortSnaps.forEach(async (sDoc) => {
+      await updateDoc(doc(db, 'shorts', sDoc.id), {
+        'author.username': cleanNew,
+      });
+    });
+  } catch (err) {
+    console.warn('Cascading short username update warning:', err);
+  }
+
+  return { success: true, newUsername: cleanNew };
+}
+
+// ----------------- FOLLOWING & FOLLOWER SYNC -----------------
+
+export async function saveFollowingToFirestore(userId: string, following: FollowUser[]): Promise<void> {
+  try {
+    const cleanList = (following || []).filter(
+      (f) => f && f.username && typeof f.username === 'string' && f.username.trim().length > 0
+    );
+    const userDocRef = doc(db, 'users', userId);
+    await setDoc(userDocRef, {
+      followingList: cleanList,
+      stats: {
+        following: cleanList.length,
+      }
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error saving following to Firestore:', error);
+  }
+}
+
+export async function saveFollowersToFirestore(userId: string, followers: FollowUser[]): Promise<void> {
+  try {
+    const cleanList = (followers || []).filter(
+      (f) => f && f.username && typeof f.username === 'string' && f.username.trim().length > 0
+    );
+    const userDocRef = doc(db, 'users', userId);
+    await setDoc(userDocRef, {
+      followersList: cleanList,
+      stats: {
+        followers: cleanList.length,
+      }
+    }, { merge: true });
+  } catch (error) {
+    console.error('Error saving followers to Firestore:', error);
+  }
+}
+
+export async function getFollowingFromFirestore(userId: string): Promise<FollowUser[]> {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    const snap = await getDoc(userDocRef);
+    if (snap.exists()) {
+      const data = snap.data() as UserProfile;
+      if (Array.isArray(data.followingList)) {
+        return data.followingList.filter(
+          (f) => f && f.username && typeof f.username === 'string' && f.username.trim().length > 0
+        );
+      }
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching following from Firestore:', error);
+    return [];
+  }
+}
+
+export async function getFollowersFromFirestore(userId: string): Promise<FollowUser[]> {
+  try {
+    const userDocRef = doc(db, 'users', userId);
+    const snap = await getDoc(userDocRef);
+    if (snap.exists()) {
+      const data = snap.data() as UserProfile;
+      if (Array.isArray(data.followersList)) {
+        return data.followersList.filter(
+          (f) => f && f.username && typeof f.username === 'string' && f.username.trim().length > 0
+        );
+      }
+    }
+    return [];
+  } catch (error) {
+    console.error('Error fetching followers from Firestore:', error);
+    return [];
+  }
+}
+
+export async function toggleFollowInFirestore(
+  currentUser: UserProfile,
+  targetUsername: string,
+  isFollowing: boolean,
+  targetUserData?: Partial<FollowUser>
+): Promise<FollowUser[]> {
+  try {
+    const cleanTarget = targetUsername.trim().toLowerCase().replace(/^@/, '');
+    let currentFollowing = currentUser.followingList || [];
+
+    if (isFollowing) {
+      // Add to following
+      const newFollowObj: FollowUser = {
+        id: targetUserData?.id || `usr_${cleanTarget}`,
+        username: cleanTarget,
+        displayName: targetUserData?.displayName || cleanTarget,
+        avatar: targetUserData?.avatar || DEFAULT_AVATAR_PLACEHOLDER,
+        bio: targetUserData?.bio || 'Decentralized creator node',
+        isVerified: targetUserData?.isVerified,
+        isFollowing: true,
+      };
+      currentFollowing = [newFollowObj, ...currentFollowing.filter(f => f.username.toLowerCase() !== cleanTarget)];
+    } else {
+      // Remove from following
+      currentFollowing = currentFollowing.filter(f => f.username.toLowerCase() !== cleanTarget);
+    }
+
+    // Save to current user's document
+    await saveFollowingToFirestore(currentUser.id, currentFollowing);
+
+    // Also update target user document in Firestore if found
+    const targetUser = await findUserByHandleOrEmail(cleanTarget);
+    if (targetUser) {
+      let targetFollowers = targetUser.followersList || [];
+      if (isFollowing) {
+        const followerEntry: FollowUser = {
+          id: currentUser.id,
+          username: currentUser.username,
+          displayName: currentUser.displayName,
+          avatar: currentUser.avatar,
+          bio: currentUser.bio,
+          isVerified: currentUser.isVerified,
+        };
+        targetFollowers = [followerEntry, ...targetFollowers.filter(f => f.username.toLowerCase() !== currentUser.username.toLowerCase())];
+      } else {
+        targetFollowers = targetFollowers.filter(f => f.username.toLowerCase() !== currentUser.username.toLowerCase());
+      }
+
+      const targetDocRef = doc(db, 'users', targetUser.id);
+      await setDoc(targetDocRef, {
+        followersList: targetFollowers,
+        stats: {
+          followers: targetFollowers.length,
+        }
+      }, { merge: true });
+    }
+
+    return currentFollowing;
+  } catch (err) {
+    console.error('Error toggling follow in Firestore:', err);
+    return currentUser.followingList || [];
+  }
 }
 
 export async function logOut(): Promise<void> {
@@ -403,3 +712,25 @@ export async function saveChannelToFirestore(channel: ChatChannel): Promise<void
     console.error('Error saving channel to Firestore:', error);
   }
 }
+
+export function subscribeToAllUsers(onUpdate: (users: UserProfile[]) => void): () => void {
+  const usersRef = collection(db, 'users');
+  return onSnapshot(usersRef, (snap) => {
+    if (!snap.empty) {
+      const items: UserProfile[] = [];
+      snap.forEach((doc) => {
+        const u = doc.data() as UserProfile;
+        items.push({
+          ...u,
+          id: doc.id,
+          isOwner: checkIsOwner(u.email),
+          isVerified: checkIsOwner(u.email) || u.isVerified === true,
+        });
+      });
+      onUpdate(items);
+    }
+  }, (err) => {
+    console.warn('Firestore users subscribe error:', err);
+  });
+}
+

@@ -109,7 +109,7 @@ export function CreatePostModal({
           <img
             src={user.avatar}
             alt={user.username}
-            className="w-10 h-10 rounded-full object-cover grayscale border-2 border-zinc-300 dark:border-zinc-700"
+            className="w-10 h-10 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-700"
           />
           <div>
             <h3 className="text-base font-black text-zinc-950 dark:text-white">{user.displayName}</h3>

@@ -90,7 +90,7 @@ export function StoryViewerModal({
           <img
             src={currentSlide.mediaUrl}
             alt="Story transmission"
-            className="w-full h-full object-cover grayscale"
+            className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-transparent to-black/90" />
         </div>
@@ -119,7 +119,7 @@ export function StoryViewerModal({
               <img
                 src={currentGroup.userAvatar}
                 alt={currentGroup.username}
-                className="w-9 h-9 rounded-full object-cover border border-white/40 grayscale"
+                className="w-9 h-9 rounded-full object-cover border border-white/40"
               />
               <div>
                 <span className="font-extrabold text-white text-xs block">

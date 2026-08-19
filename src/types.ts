@@ -13,6 +13,7 @@ export interface UserProfile {
   email?: string;
   isVerifiedGoogle?: boolean;
   isVerifiedGmail?: boolean;
+  passwordHash?: string;
   wallets: {
     btc?: string;
     eth?: string;
@@ -33,6 +34,19 @@ export interface UserProfile {
     following: number;
     tipsReceivedUsd: number;
   };
+  followingList?: FollowUser[];
+  followersList?: FollowUser[];
+}
+
+export interface SavedAccount {
+  id: string;
+  username: string;
+  displayName: string;
+  email?: string;
+  avatar: string;
+  isOwner?: boolean;
+  isVerified?: boolean;
+  lastActive: string;
 }
 
 export interface FollowUser {

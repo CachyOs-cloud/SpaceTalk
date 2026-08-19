@@ -187,7 +187,7 @@ export function FriendRequestsView({
                     <img
                       src={req.fromUser.avatar}
                       alt={req.fromUser.username}
-                      className="w-12 h-12 rounded-full object-cover grayscale border-2 border-zinc-300 dark:border-zinc-700"
+                      className="w-12 h-12 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-700"
                     />
                     <div>
                       <div className="flex items-center gap-1.5">
@@ -276,7 +276,7 @@ export function FriendRequestsView({
                         <img
                           src={friend.avatar}
                           alt={friend.username}
-                          className="w-12 h-12 rounded-full object-cover grayscale border-2 border-zinc-300 dark:border-zinc-700"
+                          className="w-12 h-12 rounded-full object-cover border-2 border-zinc-300 dark:border-zinc-700"
                         />
                         <span
                           className={`absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full border-2 border-white dark:border-zinc-950 ${

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   Search, 
@@ -12,10 +12,12 @@ import {
   UserCheck, 
   MessageSquare,
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Loader2
 } from 'lucide-react';
 import { PostItem, ShortItem, FollowUser, UserProfile } from '../types';
 import { playSound } from '../utils/sound';
+import { findUserByHandleOrEmail } from '../lib/firebase';
 
 interface SearchBarProps {
   posts: PostItem[];
@@ -28,6 +30,7 @@ interface SearchBarProps {
   onRequireAuth?: (action: string) => void;
   isGuest?: boolean;
   currentUser?: UserProfile | null;
+  allUsers?: UserProfile[];
   placeholder?: string;
 }
 
@@ -42,22 +45,108 @@ export function SearchBar({
   onRequireAuth,
   isGuest = false,
   currentUser,
-  placeholder = 'Search handles, transmissions, tags (#), shorts...',
+  allUsers = [],
+  placeholder = 'Search handles (@...), transmissions, tags (#), shorts...',
 }: SearchBarProps) {
   const [query, setQuery] = useState('');
   const [filterType, setFilterType] = useState<'all' | 'users' | 'posts' | 'shorts'>('all');
   const [isFocused, setIsFocused] = useState(false);
+  const [remoteUserResult, setRemoteUserResult] = useState<FollowUser | null>(null);
+  const [isSearchingRemote, setIsSearchingRemote] = useState(false);
 
-  // Extract unique authors from posts and shorts + following list to create a searchable network index
+  const cleanQuery = query.trim().toLowerCase().replace(/^@/, '');
+
+  // Live remote Firestore search for exact or partial handle
+  useEffect(() => {
+    if (!cleanQuery || cleanQuery.length < 1) {
+      setRemoteUserResult(null);
+      setIsSearchingRemote(false);
+      return;
+    }
+
+    let isCancelled = false;
+    const timer = setTimeout(async () => {
+      try {
+        setIsSearchingRemote(true);
+        const remoteDoc = await findUserByHandleOrEmail(cleanQuery);
+        if (!isCancelled && remoteDoc && remoteDoc.username) {
+          setRemoteUserResult({
+            id: remoteDoc.id,
+            username: remoteDoc.username,
+            displayName: remoteDoc.displayName || remoteDoc.username,
+            avatar: remoteDoc.avatar,
+            bio: remoteDoc.bio,
+            isVerified: remoteDoc.isVerified,
+            isOwner: remoteDoc.isOwner,
+            followersCount: remoteDoc.stats?.followers || 0,
+          });
+        } else if (!isCancelled) {
+          setRemoteUserResult(null);
+        }
+      } catch (err) {
+        if (!isCancelled) setRemoteUserResult(null);
+      } finally {
+        if (!isCancelled) setIsSearchingRemote(false);
+      }
+    }, 120);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
+  }, [cleanQuery]);
+
+  // Extract unique authors from currentUser, allUsers, posts, shorts + following list to create a searchable network index
   const searchableUsers = useMemo(() => {
     const userMap = new Map<string, FollowUser>();
 
-    // Add following
-    following.forEach((f) => {
-      userMap.set(f.username.toLowerCase(), f);
+    // 1. Add Current User so searching own handle (@2, etc.) always finds self
+    if (currentUser && currentUser.username) {
+      const lower = currentUser.username.toLowerCase();
+      userMap.set(lower, {
+        id: currentUser.id,
+        username: currentUser.username,
+        displayName: currentUser.displayName || currentUser.username,
+        avatar: currentUser.avatar,
+        bio: currentUser.bio || 'Your sovereign node',
+        isVerified: currentUser.isVerified,
+        isOwner: currentUser.isOwner,
+        followersCount: currentUser.stats?.followers || 0,
+      });
+    }
+
+    // 2. Add all registered network users
+    (allUsers || []).forEach((u) => {
+      if (u && u.username) {
+        const lower = u.username.toLowerCase();
+        if (!userMap.has(lower)) {
+          userMap.set(lower, {
+            id: u.id,
+            username: u.username,
+            displayName: u.displayName || u.username,
+            avatar: u.avatar,
+            bio: u.bio,
+            isVerified: u.isVerified,
+            isOwner: u.isOwner,
+            followersCount: u.stats?.followers || 0,
+          });
+        }
+      }
     });
 
-    // Add post authors
+    // 3. Add following
+    following.forEach((f) => {
+      if (f && f.username) {
+        userMap.set(f.username.toLowerCase(), f);
+      }
+    });
+
+    // 4. Add remote user if found in Firestore
+    if (remoteUserResult && remoteUserResult.username) {
+      userMap.set(remoteUserResult.username.toLowerCase(), remoteUserResult);
+    }
+
+    // 5. Add post authors
     posts.forEach((p) => {
       if (p.author && p.author.username) {
         const lower = p.author.username.toLowerCase();
@@ -68,13 +157,14 @@ export function SearchBar({
             displayName: p.author.displayName || p.author.username,
             avatar: p.author.avatar,
             isVerified: p.author.isVerified,
-            followersCount: Math.floor(Math.random() * 20) + 1,
+            isOwner: p.author.isOwner,
+            followersCount: 12,
           });
         }
       }
     });
 
-    // Add short creators
+    // 6. Add short creators
     shorts.forEach((s) => {
       if (s.author && s.author.username) {
         const lower = s.author.username.toLowerCase();
@@ -85,16 +175,15 @@ export function SearchBar({
             displayName: s.author.displayName || s.author.username,
             avatar: s.author.avatar,
             isVerified: s.author.isVerified,
-            followersCount: Math.floor(Math.random() * 50) + 2,
+            isOwner: s.author.isOwner,
+            followersCount: 18,
           });
         }
       }
     });
 
     return Array.from(userMap.values());
-  }, [posts, shorts, following]);
-
-  const cleanQuery = query.trim().toLowerCase().replace(/^@/, '');
+  }, [posts, shorts, following, currentUser, allUsers, remoteUserResult]);
 
   // Filtered results
   const matchingUsers = useMemo(() => {
@@ -270,7 +359,7 @@ export function SearchBar({
                                   <img
                                     src={userMatch.avatar}
                                     alt={userMatch.username}
-                                    className="w-10 h-10 rounded-full object-cover grayscale border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0"
+                                    className="w-10 h-10 rounded-full object-cover border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex-shrink-0"
                                   />
                                   <div className="min-w-0">
                                     <div className="flex items-center gap-1.5">
@@ -368,7 +457,7 @@ export function SearchBar({
                                   <img
                                     src={p.author.avatar}
                                     alt={p.author.username}
-                                    className="w-5 h-5 rounded-full object-cover grayscale"
+                                    className="w-5 h-5 rounded-full object-cover"
                                   />
                                   <span className="text-[11px] font-mono text-zinc-600 dark:text-zinc-400">@{p.author.username}</span>
                                   <span className="text-[10px] text-zinc-400 dark:text-zinc-500">• {p.timestamp}</span>
@@ -381,7 +470,7 @@ export function SearchBar({
                                 <img
                                   src={p.images[0]}
                                   alt="Preview"
-                                  className="w-12 h-12 rounded-xl object-cover grayscale border border-zinc-200 dark:border-zinc-800 flex-shrink-0"
+                                  className="w-12 h-12 rounded-xl object-cover border border-zinc-200 dark:border-zinc-800 flex-shrink-0"
                                 />
                               )}
                             </div>

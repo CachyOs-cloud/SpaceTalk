@@ -29,6 +29,7 @@ interface FeedProps {
   glass: string;
   rounded: string;
   following?: FollowUser[];
+  allUsers?: UserProfile[];
   onToggleFollow?: (username: string, userDetails?: Partial<FollowUser>) => void;
   onOpenStories: (index: number) => void;
   onOpenTip: (author: { username: string; displayName?: string; avatar?: string }) => void;
@@ -48,6 +49,7 @@ export function Feed({
   glass,
   rounded,
   following = [],
+  allUsers = [],
   onToggleFollow,
   onOpenStories,
   onOpenTip,
@@ -131,6 +133,7 @@ export function Feed({
           posts={posts}
           shorts={shorts}
           following={following}
+          allUsers={allUsers}
           onToggleFollow={(uname, details) => {
             if (onToggleFollow) onToggleFollow(uname, details);
           }}
@@ -165,7 +168,7 @@ export function Feed({
               <img
                 src={user.avatar}
                 alt="My avatar"
-                className="w-full h-full rounded-full object-cover grayscale brightness-90 group-hover:scale-105 transition-transform"
+                className="w-full h-full rounded-full object-cover group-hover:scale-105 transition-transform"
               />
               <div className="absolute bottom-0 right-0 w-5 h-5 rounded-full bg-zinc-950 text-white dark:bg-white dark:text-black flex items-center justify-center font-bold text-xs shadow-md">
                 +
@@ -194,7 +197,7 @@ export function Feed({
                   <img
                     src={story.userAvatar}
                     alt={story.username}
-                    className="w-full h-full rounded-full object-cover grayscale brightness-90 group-hover:scale-105 transition-transform"
+                    className="w-full h-full rounded-full object-cover group-hover:scale-105 transition-transform"
                   />
                 </div>
               </div>
@@ -264,7 +267,7 @@ export function Feed({
                     <img
                       src={post.author.avatar}
                       alt={post.author.username}
-                      className="w-11 h-11 rounded-full object-cover grayscale border-2 border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-900 flex-shrink-0"
+                      className="w-11 h-11 rounded-full object-cover border-2 border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-900 flex-shrink-0"
                     />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -361,7 +364,7 @@ export function Feed({
                         <img
                           src={img}
                           alt={`Post attachment ${idx + 1}`}
-                          className="w-full h-full object-cover grayscale brightness-95 group-hover:scale-105 transition-transform duration-500 ease-out"
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500 ease-out"
                         />
                       </motion.div>
                     ))}
@@ -511,7 +514,7 @@ export function Feed({
                               <img
                                 src={comm.avatar}
                                 alt={comm.author}
-                                className="w-6 h-6 rounded-full object-cover grayscale border border-zinc-300 dark:border-zinc-700 flex-shrink-0 mt-0.5"
+                                className="w-6 h-6 rounded-full object-cover border border-zinc-300 dark:border-zinc-700 flex-shrink-0 mt-0.5"
                               />
                               <div className="min-w-0 flex-1">
                                 <div className="flex items-baseline justify-between gap-1 flex-wrap">

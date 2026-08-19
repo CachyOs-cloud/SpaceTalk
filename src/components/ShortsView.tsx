@@ -242,7 +242,7 @@ export function ShortsView({
                     <img
                       src={currentShort.videoUrl}
                       alt="Short"
-                      className="w-full h-full object-cover grayscale brightness-95"
+                      className="w-full h-full object-cover"
                     />
                   ) : (
                     <video
@@ -251,7 +251,7 @@ export function ShortsView({
                       loop
                       muted={isMuted}
                       playsInline
-                      className="w-full h-full object-cover grayscale brightness-90"
+                      className="w-full h-full object-cover"
                     />
                   )}
                 </motion.div>
@@ -369,7 +369,7 @@ export function ShortsView({
                 <img
                   src={currentShort.author.avatar}
                   alt={currentShort.author.username}
-                  className="w-9 h-9 rounded-full object-cover grayscale border border-white/40 flex-shrink-0"
+                  className="w-9 h-9 rounded-full object-cover border border-white/40 flex-shrink-0"
                 />
                 <div className="flex items-center gap-1.5 flex-wrap">
                   <span className="font-bold text-sm text-white">{currentShort.author.displayName}</span>
