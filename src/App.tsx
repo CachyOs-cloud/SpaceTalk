@@ -157,10 +157,10 @@ export default function SpaceTalk() {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [guestRestrictionAction, setGuestRestrictionAction] = useState<string | null>(null);
 
-  // Liquid Glass Constant Classes in Monochrome
+  // Liquid Glass Constant Classes in Glowing Monochrome
   const glassBase = theme === 'dark' 
-    ? "bg-zinc-950/80 backdrop-blur-[30px] border border-zinc-800 shadow-2xl text-white" 
-    : "bg-white/95 backdrop-blur-[30px] border border-zinc-200/90 shadow-xl text-zinc-950";
+    ? "bg-zinc-950/85 backdrop-blur-[30px] border border-white/20 shadow-[0_0_25px_rgba(255,255,255,0.08)] text-white" 
+    : "bg-white/95 backdrop-blur-[30px] border border-zinc-300 shadow-[0_0_20px_rgba(0,0,0,0.06)] text-zinc-950";
   const roundedLarge = "rounded-[40px]";
   const roundedMedium = "rounded-[32px]";
 

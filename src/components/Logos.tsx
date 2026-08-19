@@ -4,47 +4,47 @@ export const LOGOS = {
   SpaceTalk: ({ className = "w-10 h-10" }: { className?: string }) => (
     <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className={className}>
       <defs>
-        <linearGradient id="st-prime-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#38BDF8" />
-          <stop offset="50%" stopColor="#818CF8" />
-          <stop offset="100%" stopColor="#EC4899" />
-        </linearGradient>
-        <linearGradient id="st-ring-grad" x1="0%" y1="100%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#06B6D4" stopOpacity="0.8" />
-          <stop offset="50%" stopColor="#A855F7" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#F43F5E" stopOpacity="0.8" />
-        </linearGradient>
-        <radialGradient id="st-core-node" cx="50%" cy="50%" r="50%">
+        <linearGradient id="st-bw-grad" x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#FFFFFF" />
-          <stop offset="45%" stopColor="#E0E7FF" />
-          <stop offset="100%" stopColor="#6366F1" />
+          <stop offset="50%" stopColor="#D4D4D8" />
+          <stop offset="100%" stopColor="#71717A" />
+        </linearGradient>
+        <linearGradient id="st-bw-ring" x1="0%" y1="100%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.9" />
+          <stop offset="50%" stopColor="#A1A1AA" stopOpacity="0.6" />
+          <stop offset="100%" stopColor="#52525B" stopOpacity="0.8" />
+        </linearGradient>
+        <radialGradient id="st-bw-core" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#FFFFFF" />
+          <stop offset="50%" stopColor="#E4E4E7" />
+          <stop offset="100%" stopColor="#71717A" />
         </radialGradient>
-        <filter id="st-neon-glow" x="-25%" y="-25%" width="150%" height="150%">
-          <feGaussianBlur stdDeviation="3.5" result="glow" />
+        <filter id="st-white-glow" x="-30%" y="-30%" width="160%" height="160%">
+          <feGaussianBlur stdDeviation="4.5" result="glow" />
           <feComposite in="SourceGraphic" in2="glow" operator="over" />
         </filter>
       </defs>
       
       {/* Outer Cosmic Orbital Rings */}
-      <circle cx="60" cy="60" r="54" stroke="url(#st-ring-grad)" strokeWidth="1.5" strokeDasharray="4 6" className="opacity-60" />
+      <circle cx="60" cy="60" r="54" stroke="url(#st-bw-ring)" strokeWidth="1.5" strokeDasharray="4 6" className="opacity-70" />
       
       {/* Interlocking Hyperspace Ellipses */}
-      <ellipse cx="60" cy="60" rx="48" ry="22" stroke="url(#st-prime-grad)" strokeWidth="2.5" transform="rotate(-30 60 60)" />
-      <ellipse cx="60" cy="60" rx="48" ry="22" stroke="url(#st-prime-grad)" strokeWidth="2.5" transform="rotate(45 60 60)" className="opacity-80" />
+      <ellipse cx="60" cy="60" rx="48" ry="22" stroke="url(#st-bw-grad)" strokeWidth="2.5" transform="rotate(-30 60 60)" filter="url(#st-white-glow)" />
+      <ellipse cx="60" cy="60" rx="48" ry="22" stroke="#FFFFFF" strokeWidth="1.5" transform="rotate(45 60 60)" className="opacity-90" />
       
-      {/* Central Diamond Portal Shield */}
-      <polygon points="60,18 96,60 60,102 24,60" stroke="url(#st-prime-grad)" strokeWidth="3" fill="none" filter="url(#st-neon-glow)" />
-      <polygon points="60,28 86,60 60,92 34,60" fill="url(#st-prime-grad)" fillOpacity="0.15" />
+      {/* Central Diamond Portal Shield with Glow */}
+      <polygon points="60,18 96,60 60,102 24,60" stroke="#FFFFFF" strokeWidth="2.5" fill="none" filter="url(#st-white-glow)" />
+      <polygon points="60,28 86,60 60,92 34,60" fill="url(#st-bw-grad)" fillOpacity="0.2" />
       
       {/* Dynamic Inner Quantum Core */}
-      <circle cx="60" cy="60" r="11" fill="url(#st-core-node)" filter="url(#st-neon-glow)" />
-      <circle cx="60" cy="60" r="4.5" className="fill-zinc-950 dark:fill-black" />
+      <circle cx="60" cy="60" r="11" fill="url(#st-bw-core)" filter="url(#st-white-glow)" />
+      <circle cx="60" cy="60" r="4.5" className="fill-black" />
       <circle cx="60" cy="60" r="1.8" className="fill-white" />
       
-      {/* Orbital Beacon Satellites */}
-      <circle cx="98" cy="38" r="4" fill="#38BDF8" filter="url(#st-neon-glow)" />
-      <circle cx="22" cy="82" r="3.5" fill="#EC4899" filter="url(#st-neon-glow)" />
-      <circle cx="60" cy="10" r="3" fill="#818CF8" />
+      {/* Orbital Beacon Satellites with Pure White Glow */}
+      <circle cx="98" cy="38" r="4" fill="#FFFFFF" filter="url(#st-white-glow)" />
+      <circle cx="22" cy="82" r="3.5" fill="#FFFFFF" filter="url(#st-white-glow)" />
+      <circle cx="60" cy="10" r="3" fill="#D4D4D8" filter="url(#st-white-glow)" />
     </svg>
   ),
   Bitcoin: ({ className = "w-5 h-5 fill-current" }: { className?: string }) => (
